@@ -2,6 +2,7 @@
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QComboBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -10,7 +11,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core.pipeline import ToneParameters
+from core.pipeline import PaletteParameters, ToneParameters
 
 
 class ToneControls(QGroupBox):
@@ -101,3 +102,46 @@ class ToneControls(QGroupBox):
         self.black_crush_value.setText(str(self.black_crush_slider.value()))
         self.highlight_burn_value.setText(str(self.highlight_burn_slider.value()))
         self.gamma_value.setText(f"{self.gamma_slider.value() / 100:.2f}")
+
+
+class PaletteControls(QGroupBox):
+    """Controls for the palette stage of the processing pipeline."""
+
+    parameters_changed = Signal()
+
+    def __init__(self, parent=None) -> None:
+        super().__init__("PALETTE", parent)
+        self.setObjectName("paletteControls")
+
+        form_layout = QFormLayout(self)
+        form_layout.setSpacing(12)
+
+        self.palette_combo = QComboBox()
+        self.palette_combo.addItems(("Neutral", "Aged Ivory", "Warm Sepia", "Cold Ash"))
+        self.palette_combo.setCurrentText("Aged Ivory")
+        form_layout.addRow("Palette", self.palette_combo)
+
+        self.tones_combo = QComboBox()
+        self.tones_combo.addItems(("2", "3", "4", "5", "6"))
+        self.tones_combo.setCurrentText("4")
+        form_layout.addRow("Tones", self.tones_combo)
+
+        self.palette_combo.currentTextChanged.connect(self.parameters_changed)
+        self.tones_combo.currentTextChanged.connect(self.parameters_changed)
+
+    def parameters(self) -> PaletteParameters:
+        """Return the current palette selection."""
+        return PaletteParameters(
+            name=self.palette_combo.currentText(),
+            tones=int(self.tones_combo.currentText()),
+        )
+
+    def reset(self) -> None:
+        """Restore the default palette selection and emit one update."""
+        self.palette_combo.blockSignals(True)
+        self.tones_combo.blockSignals(True)
+        self.palette_combo.setCurrentText("Aged Ivory")
+        self.tones_combo.setCurrentText("4")
+        self.palette_combo.blockSignals(False)
+        self.tones_combo.blockSignals(False)
+        self.parameters_changed.emit()

@@ -1,4 +1,6 @@
 from PIL import Image
+from PySide6.QtCore import QUrl
+from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDropEvent
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -10,9 +12,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core.image_loader import create_preview, load_image
+from core.image_loader import (
+    SUPPORTED_IMAGE_EXTENSIONS,
+    create_preview,
+    load_image,
+)
 from core.pipeline import ImagePipeline
-from ui.controls import ToneControls
+from ui.controls import PaletteControls, ToneControls
 from ui.image_view import ImageView
 
 
@@ -24,6 +30,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("RuinPrint")
         self.resize(1200, 750)
         self.setMinimumSize(800, 500)
+        self.setAcceptDrops(True)
 
         self.current_image_path: str | None = None
         self.original_image: Image.Image | None = None
@@ -70,6 +77,9 @@ class MainWindow(QMainWindow):
         self.tone_controls = ToneControls()
         self.tone_controls.parameters_changed.connect(self.update_result_preview)
         settings_layout.addWidget(self.tone_controls)
+        self.palette_controls = PaletteControls()
+        self.palette_controls.parameters_changed.connect(self.update_result_preview)
+        settings_layout.addWidget(self.palette_controls)
         settings_layout.addStretch()
 
         settings_scroll_area = QScrollArea()
@@ -78,19 +88,21 @@ class MainWindow(QMainWindow):
         settings_scroll_area.setFixedWidth(280)
         settings_scroll_area.setWidget(settings_content)
 
-        workspace = QWidget()
-        workspace_layout = QHBoxLayout(workspace)
+        self.workspace = QWidget()
+        self.workspace.setObjectName("workspace")
+        self.workspace.setProperty("dropActive", False)
+        workspace_layout = QHBoxLayout(self.workspace)
         workspace_layout.setContentsMargins(0, 0, 0, 0)
         workspace_layout.setSpacing(18)
         workspace_layout.addWidget(image_area, 1)
         workspace_layout.addWidget(settings_scroll_area)
 
         main_layout.addWidget(top_bar)
-        main_layout.addWidget(workspace, 1)
+        main_layout.addWidget(self.workspace, 1)
         self.setCentralWidget(central_widget)
 
     def import_image(self) -> None:
-        """Choose an image and display independent previews of original and result."""
+        """Choose an image and send it through the shared loading flow."""
         image_path, _ = QFileDialog.getOpenFileName(
             self,
             "Importar imagem",
@@ -99,6 +111,11 @@ class MainWindow(QMainWindow):
         )
         if not image_path:
             return
+
+        self.load_image_from_path(image_path)
+
+    def load_image_from_path(self, image_path: str) -> None:
+        """Load an image and create all display state used by the application."""
 
         try:
             original_image = load_image(image_path)
@@ -125,13 +142,56 @@ class MainWindow(QMainWindow):
             return
 
         self.current_result_preview = self.pipeline.process_preview(
-            self.preview_image, self.tone_controls.parameters()
+            self.preview_image,
+            self.tone_controls.parameters(),
+            self.palette_controls.parameters(),
         )
         self.result_image_view.set_image(self.current_result_preview)
 
     def reset_tone_controls(self) -> None:
-        """Restore neutral tone settings while keeping the loaded image."""
+        """Restore neutral Tone and default Palette settings while keeping the image."""
         self.tone_controls.reset()
+        self.palette_controls.reset()
+
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
+        """Accept drags that contain at least one supported local image file."""
+        if self._first_supported_drop_path(event.mimeData().urls()) is None:
+            event.ignore()
+            return
+
+        self._set_drop_feedback(True)
+        event.acceptProposedAction()
+
+    def dragLeaveEvent(self, event: QDragLeaveEvent) -> None:
+        """Remove the drop-target feedback when the drag leaves the window."""
+        self._set_drop_feedback(False)
+        event.accept()
+
+    def dropEvent(self, event: QDropEvent) -> None:
+        """Load the first valid local image from a drop operation."""
+        image_path = self._first_supported_drop_path(event.mimeData().urls())
+        self._set_drop_feedback(False)
+        if image_path is None:
+            event.ignore()
+            return
+
+        self.load_image_from_path(image_path)
+        event.acceptProposedAction()
+
+    @staticmethod
+    def _first_supported_drop_path(urls: list[QUrl]) -> str | None:
+        for url in urls:
+            if not url.isLocalFile():
+                continue
+            image_path = url.toLocalFile()
+            if image_path and image_path.lower().endswith(tuple(SUPPORTED_IMAGE_EXTENSIONS)):
+                return image_path
+        return None
+
+    def _set_drop_feedback(self, is_active: bool) -> None:
+        self.workspace.setProperty("dropActive", is_active)
+        self.workspace.style().unpolish(self.workspace)
+        self.workspace.style().polish(self.workspace)
 
     def _apply_theme(self) -> None:
         self.setStyleSheet(
@@ -176,13 +236,13 @@ class MainWindow(QMainWindow):
                 border: 1px solid #363636;
                 border-radius: 6px;
             }
-            #toneControls {
+            #toneControls, #paletteControls {
                 border: 1px solid #424242;
                 border-radius: 5px;
                 margin-top: 8px;
                 padding: 8px;
             }
-            #toneControls::title {
+            #toneControls::title, #paletteControls::title {
                 subcontrol-origin: margin;
                 left: 9px;
                 padding: 0 4px;
@@ -201,6 +261,16 @@ class MainWindow(QMainWindow):
                 width: 12px;
                 margin: -4px 0;
                 background: #bbbbbb;
+                border-radius: 6px;
+            }
+            QComboBox {
+                background: #303030;
+                border: 1px solid #484848;
+                border-radius: 4px;
+                padding: 5px 8px;
+            }
+            #workspace[dropActive="true"] {
+                border: 2px dashed #9d8a63;
                 border-radius: 6px;
             }
             """

@@ -6,6 +6,7 @@ from PIL import Image, ImageOps
 
 
 MAX_PREVIEW_SIZE = 1200
+SUPPORTED_IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".bmp"})
 
 
 def load_image(image_path: str | Path) -> Image.Image:
