@@ -5,11 +5,14 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
 
 from core.image_loader import create_preview, load_image
+from core.pipeline import ImagePipeline
+from ui.controls import ToneControls
 from ui.image_view import ImageView
 
 
@@ -26,6 +29,7 @@ class MainWindow(QMainWindow):
         self.original_image: Image.Image | None = None
         self.preview_image: Image.Image | None = None
         self.current_result_preview: Image.Image | None = None
+        self.pipeline = ImagePipeline()
 
         self._build_interface()
         self._apply_theme()
@@ -46,7 +50,9 @@ class MainWindow(QMainWindow):
         self.import_button.clicked.connect(self.import_image)
         top_bar_layout.addWidget(self.import_button)
         top_bar_layout.addWidget(QPushButton("Exportar PNG"))
-        top_bar_layout.addWidget(QPushButton("Redefinir"))
+        self.reset_button = QPushButton("Redefinir")
+        self.reset_button.clicked.connect(self.reset_tone_controls)
+        top_bar_layout.addWidget(self.reset_button)
         top_bar_layout.addStretch()
 
         image_area = QWidget()
@@ -58,8 +64,29 @@ class MainWindow(QMainWindow):
         image_layout.addWidget(self.original_image_view, 1)
         image_layout.addWidget(self.result_image_view, 1)
 
+        settings_content = QWidget()
+        settings_layout = QVBoxLayout(settings_content)
+        settings_layout.setContentsMargins(12, 12, 12, 12)
+        self.tone_controls = ToneControls()
+        self.tone_controls.parameters_changed.connect(self.update_result_preview)
+        settings_layout.addWidget(self.tone_controls)
+        settings_layout.addStretch()
+
+        settings_scroll_area = QScrollArea()
+        settings_scroll_area.setObjectName("settingsPanel")
+        settings_scroll_area.setWidgetResizable(True)
+        settings_scroll_area.setFixedWidth(280)
+        settings_scroll_area.setWidget(settings_content)
+
+        workspace = QWidget()
+        workspace_layout = QHBoxLayout(workspace)
+        workspace_layout.setContentsMargins(0, 0, 0, 0)
+        workspace_layout.setSpacing(18)
+        workspace_layout.addWidget(image_area, 1)
+        workspace_layout.addWidget(settings_scroll_area)
+
         main_layout.addWidget(top_bar)
-        main_layout.addWidget(image_area, 1)
+        main_layout.addWidget(workspace, 1)
         self.setCentralWidget(central_widget)
 
     def import_image(self) -> None:
@@ -90,7 +117,21 @@ class MainWindow(QMainWindow):
         self.current_result_preview = preview_image.copy()
 
         self.original_image_view.set_image(self.preview_image)
+        self.update_result_preview()
+
+    def update_result_preview(self) -> None:
+        """Rebuild the result from the untouched original preview and current controls."""
+        if self.preview_image is None:
+            return
+
+        self.current_result_preview = self.pipeline.process_preview(
+            self.preview_image, self.tone_controls.parameters()
+        )
         self.result_image_view.set_image(self.current_result_preview)
+
+    def reset_tone_controls(self) -> None:
+        """Restore neutral tone settings while keeping the loaded image."""
+        self.tone_controls.reset()
 
     def _apply_theme(self) -> None:
         self.setStyleSheet(
@@ -129,6 +170,38 @@ class MainWindow(QMainWindow):
                 border: 1px dashed #454545;
                 border-radius: 4px;
                 color: #8d8d8d;
+            }
+            #settingsPanel, #settingsPanel > QWidget {
+                background: #202020;
+                border: 1px solid #363636;
+                border-radius: 6px;
+            }
+            #toneControls {
+                border: 1px solid #424242;
+                border-radius: 5px;
+                margin-top: 8px;
+                padding: 8px;
+            }
+            #toneControls::title {
+                subcontrol-origin: margin;
+                left: 9px;
+                padding: 0 4px;
+                color: #cfcfcf;
+                font-weight: 600;
+            }
+            #controlValue {
+                color: #bcbcbc;
+            }
+            QSlider::groove:horizontal {
+                height: 4px;
+                background: #3a3a3a;
+                border-radius: 2px;
+            }
+            QSlider::handle:horizontal {
+                width: 12px;
+                margin: -4px 0;
+                background: #bbbbbb;
+                border-radius: 6px;
             }
             """
         )
