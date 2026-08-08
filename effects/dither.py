@@ -1,0 +1,1 @@
+"""Future dithering effect."""
