@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from PIL import Image
 
 from effects.dither import apply_dither
+from effects.ink import apply_ink
 from effects.tone import apply_tone
 
 
@@ -35,6 +36,17 @@ class DitherParameters:
     scale: int = 1
 
 
+@dataclass(frozen=True)
+class InkParameters:
+    """Parameters for the Print/Ink stage of the image pipeline."""
+
+    ink_bleed: int = 0
+    ink_loss: int = 0
+    paper_grain: int = 0
+    speckles: int = 0
+    print_misalignment: int = 0
+
+
 class ImagePipeline:
     """Apply the enabled processing stages to an original preview image."""
 
@@ -44,8 +56,9 @@ class ImagePipeline:
         tone: ToneParameters,
         palette: PaletteParameters,
         dither: DitherParameters,
+        ink: InkParameters,
     ) -> Image.Image:
-        """Process a preserved preview through Tone then Dither/Palette once."""
+        """Process a preview through Tone, Dither/Palette, then Print/Ink."""
         tone_result = apply_tone(
             original_preview,
             contrast=tone.contrast,
@@ -53,11 +66,21 @@ class ImagePipeline:
             highlight_burn=tone.highlight_burn,
             gamma=tone.gamma,
         )
-        return apply_dither(
+        dither_result = apply_dither(
             tone_result,
             palette.name,
             palette.tones,
             dither.mode,
             dither.strength,
             dither.scale,
+        )
+        return apply_ink(
+            dither_result,
+            palette.name,
+            palette.tones,
+            ink_bleed=ink.ink_bleed,
+            ink_loss=ink.ink_loss,
+            paper_grain=ink.paper_grain,
+            speckles=ink.speckles,
+            print_misalignment=ink.print_misalignment,
         )

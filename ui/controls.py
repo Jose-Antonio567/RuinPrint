@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core.pipeline import DitherParameters, PaletteParameters, ToneParameters
+from core.pipeline import DitherParameters, InkParameters, PaletteParameters, ToneParameters
 
 
 class ToneControls(QGroupBox):
@@ -226,3 +226,79 @@ class DitherControls(QGroupBox):
     def _refresh_value_labels(self) -> None:
         self.strength_value.setText(str(self.strength_slider.value()))
         self.scale_value.setText(str(self.scale_slider.value()))
+
+
+class InkControls(QGroupBox):
+    """Controls for the Print/Ink stage of the processing pipeline."""
+
+    parameters_changed = Signal()
+
+    def __init__(self, parent=None) -> None:
+        super().__init__("PRINT / INK", parent)
+        self.setObjectName("inkControls")
+
+        form_layout = QFormLayout(self)
+        form_layout.setSpacing(12)
+        self.ink_bleed_slider, self.ink_bleed_value = self._add_slider(form_layout, "Ink Bleed")
+        self.ink_loss_slider, self.ink_loss_value = self._add_slider(form_layout, "Ink Loss")
+        self.paper_grain_slider, self.paper_grain_value = self._add_slider(form_layout, "Paper Grain")
+        self.speckles_slider, self.speckles_value = self._add_slider(form_layout, "Speckles")
+        self.print_misalignment_slider, self.print_misalignment_value = self._add_slider(
+            form_layout, "Print Misalignment"
+        )
+
+    def parameters(self) -> InkParameters:
+        """Return the current print/ink values."""
+        return InkParameters(
+            ink_bleed=self.ink_bleed_slider.value(),
+            ink_loss=self.ink_loss_slider.value(),
+            paper_grain=self.paper_grain_slider.value(),
+            speckles=self.speckles_slider.value(),
+            print_misalignment=self.print_misalignment_slider.value(),
+        )
+
+    def reset(self) -> None:
+        """Restore the print/ink sliders to zero and emit one update."""
+        sliders = (
+            self.ink_bleed_slider,
+            self.ink_loss_slider,
+            self.paper_grain_slider,
+            self.speckles_slider,
+            self.print_misalignment_slider,
+        )
+        for slider in sliders:
+            slider.blockSignals(True)
+            slider.setValue(0)
+            slider.blockSignals(False)
+        self._refresh_value_labels()
+        self.parameters_changed.emit()
+
+    def _add_slider(self, form_layout: QFormLayout, label: str) -> tuple[QSlider, QLabel]:
+        slider = QSlider(Qt.Orientation.Horizontal)
+        slider.setRange(0, 100)
+
+        value_label = QLabel("0")
+        value_label.setObjectName("controlValue")
+        value_label.setMinimumWidth(40)
+        value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+        row = QWidget()
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.addWidget(slider, 1)
+        row_layout.addWidget(value_label)
+        form_layout.addRow(label, row)
+
+        def update_value(value: int) -> None:
+            value_label.setText(str(value))
+            self.parameters_changed.emit()
+
+        slider.valueChanged.connect(update_value)
+        return slider, value_label
+
+    def _refresh_value_labels(self) -> None:
+        self.ink_bleed_value.setText(str(self.ink_bleed_slider.value()))
+        self.ink_loss_value.setText(str(self.ink_loss_slider.value()))
+        self.paper_grain_value.setText(str(self.paper_grain_slider.value()))
+        self.speckles_value.setText(str(self.speckles_slider.value()))
+        self.print_misalignment_value.setText(str(self.print_misalignment_slider.value()))
