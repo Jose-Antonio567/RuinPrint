@@ -36,12 +36,35 @@ PALETTES: dict[str, dict[int, tuple[tuple[int, int, int], ...]]] = {
 }
 
 
-def apply_palette(image: Image.Image, palette_name: str, tones: int) -> Image.Image:
-    """Map an RGBA image to an explicit palette while preserving alpha exactly."""
+def get_palette(palette_name: str, tones: int) -> tuple[tuple[int, int, int], ...]:
+    """Return the explicit RGB colors for a palette selection."""
     try:
-        colors = PALETTES[palette_name][tones]
+        return PALETTES[palette_name][tones]
     except KeyError as error:
         raise ValueError("Paleta ou quantidade de tons inválida.") from error
+
+
+def palette_luminance(colors: tuple[tuple[int, int, int], ...]) -> np.ndarray:
+    """Return normalized luminance values for explicit RGB palette colors."""
+    color_array = np.asarray(colors, dtype=np.float32)
+    return (
+        0.2126 * color_array[:, 0]
+        + 0.7152 * color_array[:, 1]
+        + 0.0722 * color_array[:, 2]
+    ) / 255.0
+
+
+def nearest_palette_indexes(
+    luminance: np.ndarray, palette_luminances: np.ndarray
+) -> np.ndarray:
+    """Find the nearest explicit palette color for each luminance value."""
+    distances = np.abs(luminance[..., np.newaxis] - palette_luminances)
+    return np.argmin(distances, axis=-1)
+
+
+def apply_palette(image: Image.Image, palette_name: str, tones: int) -> Image.Image:
+    """Map an RGBA image to an explicit palette while preserving alpha exactly."""
+    colors = get_palette(palette_name, tones)
 
     rgba_image = image.convert("RGBA")
     pixels = np.asarray(rgba_image, dtype=np.uint8)
@@ -49,7 +72,7 @@ def apply_palette(image: Image.Image, palette_name: str, tones: int) -> Image.Im
     luminance = (0.2126 * rgb[..., 0] + 0.7152 * rgb[..., 1] + 0.0722 * rgb[..., 2]) / 255.0
 
     color_array = np.asarray(colors, dtype=np.uint8)
-    color_indexes = np.minimum((luminance * len(colors)).astype(np.intp), len(colors) - 1)
+    color_indexes = nearest_palette_indexes(luminance, palette_luminance(colors))
 
     output_pixels = np.empty_like(pixels)
     output_pixels[..., :3] = color_array[color_indexes]

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from PIL import Image
 
-from effects.palette import apply_palette
+from effects.dither import apply_dither
 from effects.tone import apply_tone
 
 
@@ -26,6 +26,15 @@ class PaletteParameters:
     tones: int = 4
 
 
+@dataclass(frozen=True)
+class DitherParameters:
+    """Parameters for the Dither/Palette stage of the image pipeline."""
+
+    mode: str = "Bayer"
+    strength: int = 70
+    scale: int = 1
+
+
 class ImagePipeline:
     """Apply the enabled processing stages to an original preview image."""
 
@@ -34,8 +43,9 @@ class ImagePipeline:
         original_preview: Image.Image,
         tone: ToneParameters,
         palette: PaletteParameters,
+        dither: DitherParameters,
     ) -> Image.Image:
-        """Process a preserved preview through Tone and Palette, in order."""
+        """Process a preserved preview through Tone then Dither/Palette once."""
         tone_result = apply_tone(
             original_preview,
             contrast=tone.contrast,
@@ -43,4 +53,11 @@ class ImagePipeline:
             highlight_burn=tone.highlight_burn,
             gamma=tone.gamma,
         )
-        return apply_palette(tone_result, palette.name, palette.tones)
+        return apply_dither(
+            tone_result,
+            palette.name,
+            palette.tones,
+            dither.mode,
+            dither.strength,
+            dither.scale,
+        )

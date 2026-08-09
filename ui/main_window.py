@@ -1,5 +1,5 @@
 from PIL import Image
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QTimer, QUrl
 from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDropEvent
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -18,7 +18,7 @@ from core.image_loader import (
     load_image,
 )
 from core.pipeline import ImagePipeline
-from ui.controls import PaletteControls, ToneControls
+from ui.controls import DitherControls, PaletteControls, ToneControls
 from ui.image_view import ImageView
 
 
@@ -37,6 +37,11 @@ class MainWindow(QMainWindow):
         self.preview_image: Image.Image | None = None
         self.current_result_preview: Image.Image | None = None
         self.pipeline = ImagePipeline()
+        self._is_resetting_controls = False
+        self._update_timer = QTimer(self)
+        self._update_timer.setSingleShot(True)
+        self._update_timer.setInterval(80)
+        self._update_timer.timeout.connect(self.update_result_preview)
 
         self._build_interface()
         self._apply_theme()
@@ -75,11 +80,14 @@ class MainWindow(QMainWindow):
         settings_layout = QVBoxLayout(settings_content)
         settings_layout.setContentsMargins(12, 12, 12, 12)
         self.tone_controls = ToneControls()
-        self.tone_controls.parameters_changed.connect(self.update_result_preview)
+        self.tone_controls.parameters_changed.connect(self.schedule_result_update)
         settings_layout.addWidget(self.tone_controls)
         self.palette_controls = PaletteControls()
-        self.palette_controls.parameters_changed.connect(self.update_result_preview)
+        self.palette_controls.parameters_changed.connect(self.schedule_result_update)
         settings_layout.addWidget(self.palette_controls)
+        self.dither_controls = DitherControls()
+        self.dither_controls.parameters_changed.connect(self.schedule_result_update)
+        settings_layout.addWidget(self.dither_controls)
         settings_layout.addStretch()
 
         settings_scroll_area = QScrollArea()
@@ -145,13 +153,24 @@ class MainWindow(QMainWindow):
             self.preview_image,
             self.tone_controls.parameters(),
             self.palette_controls.parameters(),
+            self.dither_controls.parameters(),
         )
         self.result_image_view.set_image(self.current_result_preview)
 
+    def schedule_result_update(self) -> None:
+        """Debounce preview recalculation while controls are being adjusted."""
+        if not self._is_resetting_controls:
+            self._update_timer.start()
+
     def reset_tone_controls(self) -> None:
-        """Restore neutral Tone and default Palette settings while keeping the image."""
+        """Restore default controls while keeping the image and update once."""
+        self._is_resetting_controls = True
         self.tone_controls.reset()
         self.palette_controls.reset()
+        self.dither_controls.reset()
+        self._is_resetting_controls = False
+        self._update_timer.stop()
+        self.update_result_preview()
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         """Accept drags that contain at least one supported local image file."""
@@ -236,13 +255,13 @@ class MainWindow(QMainWindow):
                 border: 1px solid #363636;
                 border-radius: 6px;
             }
-            #toneControls, #paletteControls {
+            #toneControls, #paletteControls, #ditherControls {
                 border: 1px solid #424242;
                 border-radius: 5px;
                 margin-top: 8px;
                 padding: 8px;
             }
-            #toneControls::title, #paletteControls::title {
+            #toneControls::title, #paletteControls::title, #ditherControls::title {
                 subcontrol-origin: margin;
                 left: 9px;
                 padding: 0 4px;

@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core.pipeline import PaletteParameters, ToneParameters
+from core.pipeline import DitherParameters, PaletteParameters, ToneParameters
 
 
 class ToneControls(QGroupBox):
@@ -145,3 +145,84 @@ class PaletteControls(QGroupBox):
         self.palette_combo.blockSignals(False)
         self.tones_combo.blockSignals(False)
         self.parameters_changed.emit()
+
+
+class DitherControls(QGroupBox):
+    """Controls for the Dither/Palette stage of the processing pipeline."""
+
+    parameters_changed = Signal()
+
+    def __init__(self, parent=None) -> None:
+        super().__init__("DITHER", parent)
+        self.setObjectName("ditherControls")
+
+        form_layout = QFormLayout(self)
+        form_layout.setSpacing(12)
+
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItems(
+            ("Off", "Bayer", "Clustered Dot", "Floyd-Steinberg", "Atkinson", "Noise")
+        )
+        self.mode_combo.setCurrentText("Bayer")
+        form_layout.addRow("Mode", self.mode_combo)
+
+        self.strength_slider, self.strength_value = self._add_slider(
+            form_layout, "Strength", 0, 100, 70
+        )
+        self.scale_slider, self.scale_value = self._add_slider(
+            form_layout, "Scale", 1, 8, 1
+        )
+
+        self.mode_combo.currentTextChanged.connect(self.parameters_changed)
+
+    def parameters(self) -> DitherParameters:
+        """Return the current dither values."""
+        return DitherParameters(
+            mode=self.mode_combo.currentText(),
+            strength=self.strength_slider.value(),
+            scale=self.scale_slider.value(),
+        )
+
+    def reset(self) -> None:
+        """Restore default dither values and emit one update."""
+        self.mode_combo.blockSignals(True)
+        self.strength_slider.blockSignals(True)
+        self.scale_slider.blockSignals(True)
+        self.mode_combo.setCurrentText("Bayer")
+        self.strength_slider.setValue(70)
+        self.scale_slider.setValue(1)
+        self.mode_combo.blockSignals(False)
+        self.strength_slider.blockSignals(False)
+        self.scale_slider.blockSignals(False)
+        self._refresh_value_labels()
+        self.parameters_changed.emit()
+
+    def _add_slider(
+        self, form_layout: QFormLayout, label: str, minimum: int, maximum: int, default: int
+    ) -> tuple[QSlider, QLabel]:
+        slider = QSlider(Qt.Orientation.Horizontal)
+        slider.setRange(minimum, maximum)
+        slider.setValue(default)
+
+        value_label = QLabel(str(default))
+        value_label.setObjectName("controlValue")
+        value_label.setMinimumWidth(40)
+        value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+        row = QWidget()
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.addWidget(slider, 1)
+        row_layout.addWidget(value_label)
+        form_layout.addRow(label, row)
+
+        def update_value(value: int) -> None:
+            value_label.setText(str(value))
+            self.parameters_changed.emit()
+
+        slider.valueChanged.connect(update_value)
+        return slider, value_label
+
+    def _refresh_value_labels(self) -> None:
+        self.strength_value.setText(str(self.strength_slider.value()))
+        self.scale_value.setText(str(self.scale_slider.value()))
