@@ -8,7 +8,9 @@ from effects.dither import apply_dither
 from effects.dither_modifiers import apply_dither_destruction
 from effects.black_consumption import apply_black_consumption
 from effects.engraving import apply_engraving
+from effects.focus import apply_focus_blur, create_focus_mask
 from effects.ink import apply_ink
+from effects.lens import apply_lens, apply_uneven_focus
 from effects.tone import apply_tone
 
 
@@ -68,6 +70,29 @@ class BlackConsumptionParameters:
 
 
 @dataclass(frozen=True)
+class FocusParameters:
+    """Parameters that define an image-space focus mask."""
+
+    shape: str = "Horizontal"
+    position_x: int = 50
+    position_y: int = 50
+    width: int = 40
+    softness: int = 40
+    angle: int = 0
+    blur: int = 0
+
+
+@dataclass(frozen=True)
+class LensParameters:
+    """Parameters for old-lens imperfections after Focus Map."""
+
+    uneven_focus: int = 0
+    lens_smear: int = 0
+    smear_angle: int = 0
+    soft_bleed: int = 0
+
+
+@dataclass(frozen=True)
 class InkParameters:
     """Parameters for the Print/Ink stage of the image pipeline."""
 
@@ -91,6 +116,8 @@ class ImagePipeline:
         engraving: EngravingParameters,
         black_consumption: BlackConsumptionParameters,
         ink: InkParameters,
+        focus: FocusParameters,
+        lens: LensParameters,
     ) -> Image.Image:
         """Process a preview through all stages in their intentional visual order."""
         tone_result = apply_tone(
@@ -135,7 +162,7 @@ class ImagePipeline:
             detail_swallow=black_consumption.detail_swallow,
             dither_scale=dither.scale,
         )
-        return apply_ink(
+        ink_result = apply_ink(
             consumption_result,
             palette.name,
             palette.tones,
@@ -144,4 +171,24 @@ class ImagePipeline:
             paper_grain=ink.paper_grain,
             speckles=ink.speckles,
             print_misalignment=ink.print_misalignment,
+        )
+        focus_mask = create_focus_mask(
+            ink_result.size,
+            shape=focus.shape,
+            position_x=focus.position_x,
+            position_y=focus.position_y,
+            width=focus.width,
+            softness=focus.softness,
+            angle=focus.angle,
+        )
+        uneven_focus_mask = apply_uneven_focus(focus_mask, lens.uneven_focus)
+        focus_result = apply_focus_blur(ink_result, uneven_focus_mask, focus.blur)
+        return apply_lens(
+            focus_result,
+            palette.name,
+            palette.tones,
+            uneven_focus_mask,
+            lens_smear=lens.lens_smear,
+            smear_angle=lens.smear_angle,
+            soft_bleed=lens.soft_bleed,
         )

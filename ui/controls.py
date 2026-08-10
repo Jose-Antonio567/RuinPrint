@@ -16,7 +16,9 @@ from core.pipeline import (
     DitherDestructionParameters,
     DitherParameters,
     EngravingParameters,
+    FocusParameters,
     InkParameters,
+    LensParameters,
     PaletteParameters,
     ToneParameters,
 )
@@ -428,6 +430,143 @@ class BlackConsumptionControls(QGroupBox):
         self.amount_value.setText(str(self.amount_slider.value()))
         self.reach_value.setText(str(self.reach_slider.value()))
         self.detail_swallow_value.setText(str(self.detail_swallow_slider.value()))
+
+
+class FocusControls(QGroupBox):
+    """Controls that define the Focus Map without altering image geometry."""
+
+    parameters_changed = Signal()
+
+    def __init__(self, parent=None) -> None:
+        super().__init__("FOCUS MAP", parent)
+        self.setObjectName("focusControls")
+
+        form_layout = QFormLayout(self)
+        form_layout.setSpacing(12)
+        self.shape_combo = QComboBox()
+        self.shape_combo.addItems(("Horizontal", "Vertical", "Radial", "Elliptical"))
+        form_layout.addRow("Shape", self.shape_combo)
+        self.position_x_slider, self.position_x_value = self._add_slider(form_layout, "Position X", 0, 100, 50)
+        self.position_y_slider, self.position_y_value = self._add_slider(form_layout, "Position Y", 0, 100, 50)
+        self.width_slider, self.width_value = self._add_slider(form_layout, "Width", 5, 100, 40)
+        self.softness_slider, self.softness_value = self._add_slider(form_layout, "Softness", 0, 100, 40)
+        self.angle_slider, self.angle_value = self._add_slider(form_layout, "Angle", -90, 90, 0)
+        self.blur_slider, self.blur_value = self._add_slider(form_layout, "Out-of-Focus Blur", 0, 100, 0)
+        self.shape_combo.currentTextChanged.connect(self.parameters_changed)
+
+    def parameters(self) -> FocusParameters:
+        """Return the current Focus Map values."""
+        return FocusParameters(
+            shape=self.shape_combo.currentText(),
+            position_x=self.position_x_slider.value(),
+            position_y=self.position_y_slider.value(),
+            width=self.width_slider.value(),
+            softness=self.softness_slider.value(),
+            angle=self.angle_slider.value(),
+            blur=self.blur_slider.value(),
+        )
+
+    def reset(self) -> None:
+        """Restore default Focus Map values and emit one update."""
+        for slider, value in (
+            (self.position_x_slider, 50), (self.position_y_slider, 50),
+            (self.width_slider, 40), (self.softness_slider, 40),
+            (self.angle_slider, 0), (self.blur_slider, 0),
+        ):
+            slider.blockSignals(True)
+            slider.setValue(value)
+            slider.blockSignals(False)
+        self.shape_combo.blockSignals(True)
+        self.shape_combo.setCurrentText("Horizontal")
+        self.shape_combo.blockSignals(False)
+        self._refresh_value_labels()
+        self.parameters_changed.emit()
+
+    def _add_slider(self, layout: QFormLayout, label: str, minimum: int, maximum: int, default: int) -> tuple[QSlider, QLabel]:
+        slider = QSlider(Qt.Orientation.Horizontal)
+        slider.setRange(minimum, maximum)
+        slider.setValue(default)
+        value_label = QLabel(str(default))
+        value_label.setObjectName("controlValue")
+        value_label.setMinimumWidth(40)
+        value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        row = QWidget()
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.addWidget(slider, 1)
+        row_layout.addWidget(value_label)
+        layout.addRow(label, row)
+        slider.valueChanged.connect(lambda value: (value_label.setText(str(value)), self.parameters_changed.emit()))
+        return slider, value_label
+
+    def _refresh_value_labels(self) -> None:
+        for slider, label in (
+            (self.position_x_slider, self.position_x_value), (self.position_y_slider, self.position_y_value),
+            (self.width_slider, self.width_value), (self.softness_slider, self.softness_value),
+            (self.angle_slider, self.angle_value), (self.blur_slider, self.blur_value),
+        ):
+            label.setText(str(slider.value()))
+
+
+class LensControls(QGroupBox):
+    """Controls for optical imperfections that use the Focus Map."""
+
+    parameters_changed = Signal()
+
+    def __init__(self, parent=None) -> None:
+        super().__init__("OLD LENS", parent)
+        self.setObjectName("lensControls")
+
+        form_layout = QFormLayout(self)
+        form_layout.setSpacing(12)
+        self.uneven_focus_slider, self.uneven_focus_value = self._add_slider(form_layout, "Uneven Focus", 0, 100, 0)
+        self.lens_smear_slider, self.lens_smear_value = self._add_slider(form_layout, "Lens Smear", 0, 100, 0)
+        self.smear_angle_slider, self.smear_angle_value = self._add_slider(form_layout, "Smear Angle", -90, 90, 0)
+        self.soft_bleed_slider, self.soft_bleed_value = self._add_slider(form_layout, "Soft Bleed", 0, 100, 0)
+
+    def parameters(self) -> LensParameters:
+        """Return the current Old Lens values."""
+        return LensParameters(
+            uneven_focus=self.uneven_focus_slider.value(),
+            lens_smear=self.lens_smear_slider.value(),
+            smear_angle=self.smear_angle_slider.value(),
+            soft_bleed=self.soft_bleed_slider.value(),
+        )
+
+    def reset(self) -> None:
+        """Restore default Old Lens values and emit one update."""
+        for slider in (self.uneven_focus_slider, self.lens_smear_slider, self.smear_angle_slider, self.soft_bleed_slider):
+            slider.blockSignals(True)
+            slider.setValue(0)
+            slider.blockSignals(False)
+        self._refresh_value_labels()
+        self.parameters_changed.emit()
+
+    def _add_slider(self, layout: QFormLayout, label: str, minimum: int, maximum: int, default: int) -> tuple[QSlider, QLabel]:
+        slider = QSlider(Qt.Orientation.Horizontal)
+        slider.setRange(minimum, maximum)
+        slider.setValue(default)
+        value_label = QLabel(str(default))
+        value_label.setObjectName("controlValue")
+        value_label.setMinimumWidth(40)
+        value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        row = QWidget()
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.addWidget(slider, 1)
+        row_layout.addWidget(value_label)
+        layout.addRow(label, row)
+        slider.valueChanged.connect(lambda value: (value_label.setText(str(value)), self.parameters_changed.emit()))
+        return slider, value_label
+
+    def _refresh_value_labels(self) -> None:
+        for slider, label in (
+            (self.uneven_focus_slider, self.uneven_focus_value),
+            (self.lens_smear_slider, self.lens_smear_value),
+            (self.smear_angle_slider, self.smear_angle_value),
+            (self.soft_bleed_slider, self.soft_bleed_value),
+        ):
+            label.setText(str(slider.value()))
 
 
 class InkControls(QGroupBox):
