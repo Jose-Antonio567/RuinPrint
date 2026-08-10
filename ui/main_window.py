@@ -1,10 +1,12 @@
 from dataclasses import asdict
+import json
 from pathlib import Path
 
 from PIL import Image
 from PySide6.QtCore import QSettings, QThread, QTimer, QUrl, Qt
 from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDropEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QApplication,
     QFileDialog,
     QHBoxLayout,
     QInputDialog,
@@ -30,6 +32,7 @@ from core.image_loader import (
 from core.pipeline import ImagePipeline
 from core.pipeline import PipelineSettings
 from core.preset_manager import PresetManager
+from core.edit_history import EditHistory
 from workers.export_worker import ExportWorker
 from ui.controls import (
     BlackConsumptionControls,
@@ -64,6 +67,9 @@ class MainWindow(QMainWindow):
         self.settings = QSettings("RuinPrint", "RuinPrint")
         self._applying_preset = False
         self._syncing_views = False
+        self.history = EditHistory()
+        self._history_suspended = False
+        self._before_active = False
         self._export_thread: QThread | None = None
         self._is_resetting_controls = False
         self._update_timer = QTimer(self)
@@ -90,12 +96,19 @@ class MainWindow(QMainWindow):
         self.import_button = QPushButton("Importar imagem")
         self.import_button.clicked.connect(self.import_image)
         top_bar_layout.addWidget(self.import_button)
+        self.undo_button = QPushButton("Desfazer")
+        self.redo_button = QPushButton("Refazer")
+        self.undo_button.clicked.connect(self.undo); self.redo_button.clicked.connect(self.redo)
+        top_bar_layout.addWidget(self.undo_button); top_bar_layout.addWidget(self.redo_button)
         self.export_button = QPushButton("Exportar PNG")
         self.export_button.clicked.connect(self.export_png)
         top_bar_layout.addWidget(self.export_button)
         self.reset_button = QPushButton("Redefinir")
         self.reset_button.clicked.connect(self.reset_tone_controls)
         top_bar_layout.addWidget(self.reset_button)
+        self.before_button = QPushButton("Antes (B)")
+        self.before_button.pressed.connect(self.show_before); self.before_button.released.connect(self.show_after)
+        top_bar_layout.addWidget(self.before_button)
         self.sync_views_checkbox = QCheckBox("Sincronizar visualização")
         self.sync_views_checkbox.setChecked(True)
         top_bar_layout.addWidget(self.sync_views_checkbox)
@@ -113,6 +126,10 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+1"), self, activated=self.actual_views)
         QShortcut(QKeySequence("+"), self, activated=lambda: self.original_image_view.zoom_by(1.15))
         QShortcut(QKeySequence("-"), self, activated=lambda: self.original_image_view.zoom_by(1 / 1.15))
+        QShortcut(QKeySequence("Ctrl+Z"), self, activated=self.undo)
+        QShortcut(QKeySequence("Ctrl+Shift+Z"), self, activated=self.redo)
+        QShortcut(QKeySequence("Ctrl+Y"), self, activated=self.redo)
+        QShortcut(QKeySequence("B"), self, activated=self.show_before)
 
         settings_content = QWidget()
         settings_layout = QVBoxLayout(settings_content)
@@ -138,6 +155,11 @@ class MainWindow(QMainWindow):
         self.rename_preset_button.clicked.connect(self.rename_preset)
         self.delete_preset_button.clicked.connect(self.delete_preset)
         settings_layout.addWidget(preset_box)
+        copy_button = QPushButton("Copiar config."); paste_button = QPushButton("Colar config.")
+        copy_button.clicked.connect(self.copy_settings); paste_button.clicked.connect(self.paste_settings)
+        preset_layout.addWidget(copy_button); preset_layout.addWidget(paste_button)
+        QShortcut(QKeySequence("Ctrl+Shift+C"), self, activated=self.copy_settings)
+        QShortcut(QKeySequence("Ctrl+Shift+V"), self, activated=self.paste_settings)
         self.tone_controls = ToneControls()
         self.tone_controls.parameters_changed.connect(self.schedule_result_update)
         settings_layout.addWidget(self.tone_controls)
@@ -194,6 +216,11 @@ class MainWindow(QMainWindow):
         self.export_progress.hide()
         main_layout.addWidget(self.export_progress)
         self.setCentralWidget(central_widget)
+        self._last_settings = asdict(self.current_pipeline_settings())
+        for slider in self.findChildren(QSlider):
+            slider.sliderPressed.connect(lambda: setattr(self, "_slider_before", asdict(self.current_pipeline_settings())))
+            slider.sliderReleased.connect(self._commit_slider_edit)
+        self._update_history_buttons()
 
     def import_image(self) -> None:
         """Choose an image and send it through the shared loading flow."""
@@ -226,6 +253,9 @@ class MainWindow(QMainWindow):
         self.original_image = original_image
         self.preview_image = preview_image
         self.current_result_preview = preview_image.copy()
+        self.history.clear()
+        self._last_settings = asdict(self.current_pipeline_settings())
+        self._update_history_buttons()
 
         self.original_image_view.set_image(self.preview_image, reset_view=True)
         self.update_result_preview()
@@ -248,7 +278,8 @@ class MainWindow(QMainWindow):
             self.lens_controls.parameters(),
             self.degradation_controls.parameters(),
         )
-        self.result_image_view.set_image(self.current_result_preview)
+        if not self._before_active:
+            self.result_image_view.set_image(self.current_result_preview)
 
     def _sync_view(self, source: ImageView, target: ImageView) -> None:
         if not self.sync_views_checkbox.isChecked() or self._syncing_views:
@@ -437,8 +468,58 @@ class MainWindow(QMainWindow):
                 self.delete_preset_button.setEnabled(False)
             self._update_timer.start()
 
+    def _commit_slider_edit(self) -> None:
+        before = getattr(self, "_slider_before", None)
+        if before is not None and not self._history_suspended:
+            self._record_history(before)
+
+    def _record_history(self, before: dict) -> None:
+        after = asdict(self.current_pipeline_settings())
+        self.history.record(before, after)
+        self._last_settings = after
+        self._update_history_buttons()
+
+    def _update_history_buttons(self) -> None:
+        self.undo_button.setEnabled(bool(self.history.undo_stack))
+        self.redo_button.setEnabled(bool(self.history.redo_stack))
+
+    def undo(self) -> None:
+        settings = self.history.undo(asdict(self.current_pipeline_settings()))
+        if settings: self._apply_settings_once(settings)
+
+    def redo(self) -> None:
+        settings = self.history.redo(asdict(self.current_pipeline_settings()))
+        if settings: self._apply_settings_once(settings)
+
+    def _apply_settings_once(self, settings: dict) -> None:
+        self._history_suspended = True
+        self._apply_preset_values(settings)
+        self._history_suspended = False
+        self.preset_combo.setCurrentText("Personalizado")
+        self.update_result_preview(); self._update_history_buttons()
+
+    def show_before(self) -> None:
+        if self.preview_image is not None:
+            self._before_active = True; self.result_image_view.set_image(self.preview_image)
+
+    def show_after(self) -> None:
+        self._before_active = False
+        if self.current_result_preview is not None: self.result_image_view.set_image(self.current_result_preview)
+
+    def copy_settings(self) -> None:
+        QApplication.clipboard().setText(json.dumps({"app":"RuinPrint","type":"processing-settings","version":1,"settings":asdict(self.current_pipeline_settings())}, indent=2))
+
+    def paste_settings(self) -> None:
+        try:
+            data = json.loads(QApplication.clipboard().text())
+            if data.get("app") != "RuinPrint" or data.get("type") != "processing-settings" or data.get("version") != 1 or not isinstance(data.get("settings"), dict): raise ValueError
+        except (ValueError, json.JSONDecodeError):
+            QMessageBox.warning(self, "Colar config.", "As configurações copiadas não são válidas para o RuinPrint."); return
+        before = asdict(self.current_pipeline_settings()); self._apply_settings_once(data["settings"]); self._record_history(before)
+
     def reset_tone_controls(self) -> None:
         """Restore default controls while keeping the image and update once."""
+        before = asdict(self.current_pipeline_settings())
         self._is_resetting_controls = True
         self.tone_controls.reset()
         self.palette_controls.reset()
@@ -453,6 +534,7 @@ class MainWindow(QMainWindow):
         self.preset_combo.setCurrentText("Personalizado")
         self._update_timer.stop()
         self.update_result_preview()
+        self._record_history(before)
 
     def _restore_window_state(self) -> None:
         try:
