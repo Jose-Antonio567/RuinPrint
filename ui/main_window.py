@@ -20,6 +20,7 @@ from core.image_loader import (
 from core.pipeline import ImagePipeline
 from ui.controls import (
     BlackConsumptionControls,
+    DegradationControls,
     DitherControls,
     EngravingControls,
     FocusControls,
@@ -112,6 +113,9 @@ class MainWindow(QMainWindow):
         self.lens_controls = LensControls()
         self.lens_controls.parameters_changed.connect(self.schedule_result_update)
         settings_layout.addWidget(self.lens_controls)
+        self.degradation_controls = DegradationControls()
+        self.degradation_controls.parameters_changed.connect(self.schedule_result_update)
+        settings_layout.addWidget(self.degradation_controls)
         settings_layout.addStretch()
 
         settings_scroll_area = QScrollArea()
@@ -184,6 +188,7 @@ class MainWindow(QMainWindow):
             self.ink_controls.parameters(),
             self.focus_controls.parameters(),
             self.lens_controls.parameters(),
+            self.degradation_controls.parameters(),
         )
         self.result_image_view.set_image(self.current_result_preview)
 
@@ -203,6 +208,7 @@ class MainWindow(QMainWindow):
         self.ink_controls.reset()
         self.focus_controls.reset()
         self.lens_controls.reset()
+        self.degradation_controls.reset()
         self._is_resetting_controls = False
         self._update_timer.stop()
         self.update_result_preview()
@@ -290,13 +296,13 @@ class MainWindow(QMainWindow):
                 border: 1px solid #363636;
                 border-radius: 6px;
             }
-            #toneControls, #paletteControls, #ditherControls, #engravingControls, #blackConsumptionControls, #inkControls, #focusControls, #lensControls {
+            #toneControls, #paletteControls, #ditherControls, #engravingControls, #blackConsumptionControls, #inkControls, #focusControls, #lensControls, #degradationControls {
                 border: 1px solid #424242;
                 border-radius: 5px;
                 margin-top: 8px;
                 padding: 8px;
             }
-            #toneControls::title, #paletteControls::title, #ditherControls::title, #engravingControls::title, #blackConsumptionControls::title, #inkControls::title, #focusControls::title, #lensControls::title {
+            #toneControls::title, #paletteControls::title, #ditherControls::title, #engravingControls::title, #blackConsumptionControls::title, #inkControls::title, #focusControls::title, #lensControls::title, #degradationControls::title {
                 subcontrol-origin: margin;
                 left: 9px;
                 padding: 0 4px;

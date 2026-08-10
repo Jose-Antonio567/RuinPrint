@@ -6,6 +6,7 @@ from PIL import Image
 
 from effects.dither import apply_dither
 from effects.dither_modifiers import apply_dither_destruction
+from effects.degradation import apply_degradation
 from effects.black_consumption import apply_black_consumption
 from effects.engraving import apply_engraving
 from effects.focus import apply_focus_blur, create_focus_mask
@@ -93,6 +94,19 @@ class LensParameters:
 
 
 @dataclass(frozen=True)
+class DegradationParameters:
+    """Parameters for final film/reproduction degradation."""
+
+    film_grain: int = 0
+    dust: int = 0
+    scratches: int = 0
+    edge_decay: int = 0
+    exposure_drift: int = 0
+    vignette: int = 0
+    image_fade: int = 0
+
+
+@dataclass(frozen=True)
 class InkParameters:
     """Parameters for the Print/Ink stage of the image pipeline."""
 
@@ -118,6 +132,7 @@ class ImagePipeline:
         ink: InkParameters,
         focus: FocusParameters,
         lens: LensParameters,
+        degradation: DegradationParameters,
     ) -> Image.Image:
         """Process a preview through all stages in their intentional visual order."""
         tone_result = apply_tone(
@@ -183,7 +198,7 @@ class ImagePipeline:
         )
         uneven_focus_mask = apply_uneven_focus(focus_mask, lens.uneven_focus)
         focus_result = apply_focus_blur(ink_result, uneven_focus_mask, focus.blur)
-        return apply_lens(
+        lens_result = apply_lens(
             focus_result,
             palette.name,
             palette.tones,
@@ -191,4 +206,16 @@ class ImagePipeline:
             lens_smear=lens.lens_smear,
             smear_angle=lens.smear_angle,
             soft_bleed=lens.soft_bleed,
+        )
+        return apply_degradation(
+            lens_result,
+            palette.name,
+            palette.tones,
+            film_grain=degradation.film_grain,
+            dust=degradation.dust,
+            scratches=degradation.scratches,
+            edge_decay=degradation.edge_decay,
+            exposure_drift=degradation.exposure_drift,
+            vignette=degradation.vignette,
+            image_fade=degradation.image_fade,
         )

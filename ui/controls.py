@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 
 from core.pipeline import (
     BlackConsumptionParameters,
+    DegradationParameters,
     DitherDestructionParameters,
     DitherParameters,
     EngravingParameters,
@@ -565,6 +566,77 @@ class LensControls(QGroupBox):
             (self.lens_smear_slider, self.lens_smear_value),
             (self.smear_angle_slider, self.smear_angle_value),
             (self.soft_bleed_slider, self.soft_bleed_value),
+        ):
+            label.setText(str(slider.value()))
+
+
+class DegradationControls(QGroupBox):
+    """Controls for the final Film / Degradation stage."""
+
+    parameters_changed = Signal()
+
+    def __init__(self, parent=None) -> None:
+        super().__init__("FILM / DEGRADATION", parent)
+        self.setObjectName("degradationControls")
+
+        form_layout = QFormLayout(self)
+        form_layout.setSpacing(12)
+        self.film_grain_slider, self.film_grain_value = self._add_slider(form_layout, "Film Grain")
+        self.dust_slider, self.dust_value = self._add_slider(form_layout, "Dust")
+        self.scratches_slider, self.scratches_value = self._add_slider(form_layout, "Scratches")
+        self.edge_decay_slider, self.edge_decay_value = self._add_slider(form_layout, "Edge Decay")
+        self.exposure_drift_slider, self.exposure_drift_value = self._add_slider(form_layout, "Exposure Drift")
+        self.vignette_slider, self.vignette_value = self._add_slider(form_layout, "Vignette")
+        self.image_fade_slider, self.image_fade_value = self._add_slider(form_layout, "Image Fade")
+
+    def parameters(self) -> DegradationParameters:
+        """Return the current degradation values."""
+        return DegradationParameters(
+            film_grain=self.film_grain_slider.value(),
+            dust=self.dust_slider.value(),
+            scratches=self.scratches_slider.value(),
+            edge_decay=self.edge_decay_slider.value(),
+            exposure_drift=self.exposure_drift_slider.value(),
+            vignette=self.vignette_slider.value(),
+            image_fade=self.image_fade_slider.value(),
+        )
+
+    def reset(self) -> None:
+        """Restore all degradation controls to zero and emit one update."""
+        sliders = (
+            self.film_grain_slider, self.dust_slider, self.scratches_slider,
+            self.edge_decay_slider, self.exposure_drift_slider, self.vignette_slider,
+            self.image_fade_slider,
+        )
+        for slider in sliders:
+            slider.blockSignals(True)
+            slider.setValue(0)
+            slider.blockSignals(False)
+        self._refresh_value_labels()
+        self.parameters_changed.emit()
+
+    def _add_slider(self, layout: QFormLayout, label: str) -> tuple[QSlider, QLabel]:
+        slider = QSlider(Qt.Orientation.Horizontal)
+        slider.setRange(0, 100)
+        value_label = QLabel("0")
+        value_label.setObjectName("controlValue")
+        value_label.setMinimumWidth(40)
+        value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        row = QWidget()
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.addWidget(slider, 1)
+        row_layout.addWidget(value_label)
+        layout.addRow(label, row)
+        slider.valueChanged.connect(lambda value: (value_label.setText(str(value)), self.parameters_changed.emit()))
+        return slider, value_label
+
+    def _refresh_value_labels(self) -> None:
+        for slider, label in (
+            (self.film_grain_slider, self.film_grain_value), (self.dust_slider, self.dust_value),
+            (self.scratches_slider, self.scratches_value), (self.edge_decay_slider, self.edge_decay_value),
+            (self.exposure_drift_slider, self.exposure_drift_value), (self.vignette_slider, self.vignette_value),
+            (self.image_fade_slider, self.image_fade_value),
         ):
             label.setText(str(slider.value()))
 
