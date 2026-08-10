@@ -1,6 +1,7 @@
 """Preview-processing pipeline orchestration."""
 
 from dataclasses import dataclass
+from typing import Callable
 
 from PIL import Image
 
@@ -117,6 +118,22 @@ class InkParameters:
     print_misalignment: int = 0
 
 
+@dataclass(frozen=True)
+class PipelineSettings:
+    """Complete visual settings snapshot, reusable for preview and export."""
+
+    tone: ToneParameters
+    palette: PaletteParameters
+    dither: DitherParameters
+    dither_destruction: DitherDestructionParameters
+    engraving: EngravingParameters
+    black_consumption: BlackConsumptionParameters
+    ink: InkParameters
+    focus: FocusParameters
+    lens: LensParameters
+    degradation: DegradationParameters
+
+
 class ImagePipeline:
     """Apply the enabled processing stages to an original preview image."""
 
@@ -134,49 +151,77 @@ class ImagePipeline:
         lens: LensParameters,
         degradation: DegradationParameters,
     ) -> Image.Image:
-        """Process a preview through all stages in their intentional visual order."""
-        tone_result = apply_tone(
+        return self.process(
             original_preview,
+            PipelineSettings(tone, palette, dither, dither_destruction, engraving, black_consumption, ink, focus, lens, degradation),
+        )
+
+    def process(
+        self,
+        image: Image.Image,
+        settings: PipelineSettings,
+        *,
+        spatial_scale: float = 1.0,
+        progress_callback: Callable[[int], None] | None = None,
+    ) -> Image.Image:
+        """Run the single visual pipeline for any resolution using a settings snapshot."""
+        def report(value: int) -> None:
+            if progress_callback is not None:
+                progress_callback(value)
+
+        tone, palette = settings.tone, settings.palette
+        dither, destruction = settings.dither, settings.dither_destruction
+        engraving, consumption = settings.engraving, settings.black_consumption
+        ink, focus, lens, degradation = settings.ink, settings.focus, settings.lens, settings.degradation
+        spatial_scale = max(float(spatial_scale), 1.0)
+        report(5)
+        tone_result = apply_tone(
+            image,
             contrast=tone.contrast,
             black_crush=tone.black_crush,
             highlight_burn=tone.highlight_burn,
             gamma=tone.gamma,
         )
+        report(15)
         dither_result = apply_dither(
             tone_result,
             palette.name,
             palette.tones,
             dither.mode,
             dither.strength,
-            dither.scale,
-            dither_destruction.pattern_distortion,
+            max(1, int(round(dither.scale * spatial_scale))),
+            destruction.pattern_distortion,
         )
+        report(30)
         destruction_result = apply_dither_destruction(
             dither_result,
             palette.name,
             palette.tones,
-            dither_loss=dither_destruction.dither_loss,
-            dither_spread=dither_destruction.dither_spread,
-            scale=dither.scale,
+            dither_loss=destruction.dither_loss,
+            dither_spread=destruction.dither_spread,
+            scale=max(1, int(round(dither.scale * spatial_scale))),
         )
+        report(40)
         engraving_result = apply_engraving(
             destruction_result,
             palette.name,
             palette.tones,
             strength=engraving.strength,
             detail=engraving.detail,
-            thickness=engraving.thickness,
+            thickness=max(1, int(round(engraving.thickness * spatial_scale))),
             direction=engraving.direction,
         )
+        report(50)
         consumption_result = apply_black_consumption(
             engraving_result,
             palette.name,
             palette.tones,
-            amount=black_consumption.amount,
-            reach=black_consumption.reach,
-            detail_swallow=black_consumption.detail_swallow,
-            dither_scale=dither.scale,
+            amount=consumption.amount,
+            reach=max(1, int(round(consumption.reach * spatial_scale))),
+            detail_swallow=consumption.detail_swallow,
+            dither_scale=max(1, int(round(dither.scale * spatial_scale))),
         )
+        report(58)
         ink_result = apply_ink(
             consumption_result,
             palette.name,
@@ -187,6 +232,7 @@ class ImagePipeline:
             speckles=ink.speckles,
             print_misalignment=ink.print_misalignment,
         )
+        report(68)
         focus_mask = create_focus_mask(
             ink_result.size,
             shape=focus.shape,
@@ -198,6 +244,7 @@ class ImagePipeline:
         )
         uneven_focus_mask = apply_uneven_focus(focus_mask, lens.uneven_focus)
         focus_result = apply_focus_blur(ink_result, uneven_focus_mask, focus.blur)
+        report(78)
         lens_result = apply_lens(
             focus_result,
             palette.name,
@@ -207,7 +254,8 @@ class ImagePipeline:
             smear_angle=lens.smear_angle,
             soft_bleed=lens.soft_bleed,
         )
-        return apply_degradation(
+        report(86)
+        result = apply_degradation(
             lens_result,
             palette.name,
             palette.tones,
@@ -219,3 +267,5 @@ class ImagePipeline:
             vignette=degradation.vignette,
             image_fade=degradation.image_fade,
         )
+        report(94)
+        return result
