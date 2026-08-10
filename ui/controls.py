@@ -12,8 +12,10 @@ from PySide6.QtWidgets import (
 )
 
 from core.pipeline import (
+    BlackConsumptionParameters,
     DitherDestructionParameters,
     DitherParameters,
+    EngravingParameters,
     InkParameters,
     PaletteParameters,
     ToneParameters,
@@ -270,6 +272,162 @@ class DitherControls(QGroupBox):
         self.pattern_distortion_value.setText(str(self.pattern_distortion_slider.value()))
         self.dither_loss_value.setText(str(self.dither_loss_slider.value()))
         self.dither_spread_value.setText(str(self.dither_spread_slider.value()))
+
+
+class EngravingControls(QGroupBox):
+    """Controls for structural edge engraving."""
+
+    parameters_changed = Signal()
+
+    def __init__(self, parent=None) -> None:
+        super().__init__("ENGRAVING", parent)
+        self.setObjectName("engravingControls")
+
+        form_layout = QFormLayout(self)
+        form_layout.setSpacing(12)
+        self.strength_slider, self.strength_value = self._add_slider(
+            form_layout, "Strength", 0, 100, 0
+        )
+        self.detail_slider, self.detail_value = self._add_slider(
+            form_layout, "Detail", 0, 100, 35
+        )
+        self.thickness_slider, self.thickness_value = self._add_slider(
+            form_layout, "Thickness", 1, 6, 1
+        )
+        self.direction_combo = QComboBox()
+        self.direction_combo.addItems(
+            ("Natural", "Horizontal", "Vertical", "Diagonal /", "Diagonal \\")
+        )
+        form_layout.addRow("Direction", self.direction_combo)
+        self.direction_combo.currentTextChanged.connect(self.parameters_changed)
+
+    def parameters(self) -> EngravingParameters:
+        """Return the current engraving values."""
+        return EngravingParameters(
+            strength=self.strength_slider.value(),
+            detail=self.detail_slider.value(),
+            thickness=self.thickness_slider.value(),
+            direction=self.direction_combo.currentText(),
+        )
+
+    def reset(self) -> None:
+        """Restore default engraving values and emit one update."""
+        for slider, value in (
+            (self.strength_slider, 0),
+            (self.detail_slider, 35),
+            (self.thickness_slider, 1),
+        ):
+            slider.blockSignals(True)
+            slider.setValue(value)
+            slider.blockSignals(False)
+        self.direction_combo.blockSignals(True)
+        self.direction_combo.setCurrentText("Natural")
+        self.direction_combo.blockSignals(False)
+        self._refresh_value_labels()
+        self.parameters_changed.emit()
+
+    def _add_slider(
+        self, form_layout: QFormLayout, label: str, minimum: int, maximum: int, default: int
+    ) -> tuple[QSlider, QLabel]:
+        slider = QSlider(Qt.Orientation.Horizontal)
+        slider.setRange(minimum, maximum)
+        slider.setValue(default)
+
+        value_label = QLabel(str(default))
+        value_label.setObjectName("controlValue")
+        value_label.setMinimumWidth(40)
+        value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        row = QWidget()
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.addWidget(slider, 1)
+        row_layout.addWidget(value_label)
+        form_layout.addRow(label, row)
+
+        def update_value(value: int) -> None:
+            value_label.setText(str(value))
+            self.parameters_changed.emit()
+
+        slider.valueChanged.connect(update_value)
+        return slider, value_label
+
+    def _refresh_value_labels(self) -> None:
+        self.strength_value.setText(str(self.strength_slider.value()))
+        self.detail_value.setText(str(self.detail_slider.value()))
+        self.thickness_value.setText(str(self.thickness_slider.value()))
+
+
+class BlackConsumptionControls(QGroupBox):
+    """Controls for localized spatial growth of dark palette masses."""
+
+    parameters_changed = Signal()
+
+    def __init__(self, parent=None) -> None:
+        super().__init__("BLACK CONSUMPTION", parent)
+        self.setObjectName("blackConsumptionControls")
+
+        form_layout = QFormLayout(self)
+        form_layout.setSpacing(12)
+        self.amount_slider, self.amount_value = self._add_slider(
+            form_layout, "Amount", 0, 100, 0
+        )
+        self.reach_slider, self.reach_value = self._add_slider(
+            form_layout, "Reach", 1, 8, 2
+        )
+        self.detail_swallow_slider, self.detail_swallow_value = self._add_slider(
+            form_layout, "Detail Swallow", 0, 100, 0
+        )
+
+    def parameters(self) -> BlackConsumptionParameters:
+        """Return the current black consumption values."""
+        return BlackConsumptionParameters(
+            amount=self.amount_slider.value(),
+            reach=self.reach_slider.value(),
+            detail_swallow=self.detail_swallow_slider.value(),
+        )
+
+    def reset(self) -> None:
+        """Restore default black consumption values and emit one update."""
+        for slider, value in (
+            (self.amount_slider, 0),
+            (self.reach_slider, 2),
+            (self.detail_swallow_slider, 0),
+        ):
+            slider.blockSignals(True)
+            slider.setValue(value)
+            slider.blockSignals(False)
+        self._refresh_value_labels()
+        self.parameters_changed.emit()
+
+    def _add_slider(
+        self, form_layout: QFormLayout, label: str, minimum: int, maximum: int, default: int
+    ) -> tuple[QSlider, QLabel]:
+        slider = QSlider(Qt.Orientation.Horizontal)
+        slider.setRange(minimum, maximum)
+        slider.setValue(default)
+
+        value_label = QLabel(str(default))
+        value_label.setObjectName("controlValue")
+        value_label.setMinimumWidth(40)
+        value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        row = QWidget()
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.addWidget(slider, 1)
+        row_layout.addWidget(value_label)
+        form_layout.addRow(label, row)
+
+        def update_value(value: int) -> None:
+            value_label.setText(str(value))
+            self.parameters_changed.emit()
+
+        slider.valueChanged.connect(update_value)
+        return slider, value_label
+
+    def _refresh_value_labels(self) -> None:
+        self.amount_value.setText(str(self.amount_slider.value()))
+        self.reach_value.setText(str(self.reach_slider.value()))
+        self.detail_swallow_value.setText(str(self.detail_swallow_slider.value()))
 
 
 class InkControls(QGroupBox):

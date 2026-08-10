@@ -18,7 +18,14 @@ from core.image_loader import (
     load_image,
 )
 from core.pipeline import ImagePipeline
-from ui.controls import DitherControls, InkControls, PaletteControls, ToneControls
+from ui.controls import (
+    BlackConsumptionControls,
+    DitherControls,
+    EngravingControls,
+    InkControls,
+    PaletteControls,
+    ToneControls,
+)
 from ui.image_view import ImageView
 
 
@@ -88,6 +95,12 @@ class MainWindow(QMainWindow):
         self.dither_controls = DitherControls()
         self.dither_controls.parameters_changed.connect(self.schedule_result_update)
         settings_layout.addWidget(self.dither_controls)
+        self.engraving_controls = EngravingControls()
+        self.engraving_controls.parameters_changed.connect(self.schedule_result_update)
+        settings_layout.addWidget(self.engraving_controls)
+        self.black_consumption_controls = BlackConsumptionControls()
+        self.black_consumption_controls.parameters_changed.connect(self.schedule_result_update)
+        settings_layout.addWidget(self.black_consumption_controls)
         self.ink_controls = InkControls()
         self.ink_controls.parameters_changed.connect(self.schedule_result_update)
         settings_layout.addWidget(self.ink_controls)
@@ -158,6 +171,8 @@ class MainWindow(QMainWindow):
             self.palette_controls.parameters(),
             self.dither_controls.parameters(),
             self.dither_controls.destruction_parameters(),
+            self.engraving_controls.parameters(),
+            self.black_consumption_controls.parameters(),
             self.ink_controls.parameters(),
         )
         self.result_image_view.set_image(self.current_result_preview)
@@ -173,6 +188,8 @@ class MainWindow(QMainWindow):
         self.tone_controls.reset()
         self.palette_controls.reset()
         self.dither_controls.reset()
+        self.engraving_controls.reset()
+        self.black_consumption_controls.reset()
         self.ink_controls.reset()
         self._is_resetting_controls = False
         self._update_timer.stop()
@@ -261,13 +278,13 @@ class MainWindow(QMainWindow):
                 border: 1px solid #363636;
                 border-radius: 6px;
             }
-            #toneControls, #paletteControls, #ditherControls, #inkControls {
+            #toneControls, #paletteControls, #ditherControls, #engravingControls, #blackConsumptionControls, #inkControls {
                 border: 1px solid #424242;
                 border-radius: 5px;
                 margin-top: 8px;
                 padding: 8px;
             }
-            #toneControls::title, #paletteControls::title, #ditherControls::title, #inkControls::title {
+            #toneControls::title, #paletteControls::title, #ditherControls::title, #engravingControls::title, #blackConsumptionControls::title, #inkControls::title {
                 subcontrol-origin: margin;
                 left: 9px;
                 padding: 0 4px;

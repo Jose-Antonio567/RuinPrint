@@ -6,6 +6,8 @@ from PIL import Image
 
 from effects.dither import apply_dither
 from effects.dither_modifiers import apply_dither_destruction
+from effects.black_consumption import apply_black_consumption
+from effects.engraving import apply_engraving
 from effects.ink import apply_ink
 from effects.tone import apply_tone
 
@@ -47,6 +49,25 @@ class DitherDestructionParameters:
 
 
 @dataclass(frozen=True)
+class EngravingParameters:
+    """Parameters for the structural edge engraving stage."""
+
+    strength: int = 0
+    detail: int = 35
+    thickness: int = 1
+    direction: str = "Natural"
+
+
+@dataclass(frozen=True)
+class BlackConsumptionParameters:
+    """Parameters for spatial growth of dark masses."""
+
+    amount: int = 0
+    reach: int = 2
+    detail_swallow: int = 0
+
+
+@dataclass(frozen=True)
 class InkParameters:
     """Parameters for the Print/Ink stage of the image pipeline."""
 
@@ -67,9 +88,11 @@ class ImagePipeline:
         palette: PaletteParameters,
         dither: DitherParameters,
         dither_destruction: DitherDestructionParameters,
+        engraving: EngravingParameters,
+        black_consumption: BlackConsumptionParameters,
         ink: InkParameters,
     ) -> Image.Image:
-        """Process a preview through Tone, Dither, Destruction, then Print/Ink."""
+        """Process a preview through all stages in their intentional visual order."""
         tone_result = apply_tone(
             original_preview,
             contrast=tone.contrast,
@@ -94,8 +117,26 @@ class ImagePipeline:
             dither_spread=dither_destruction.dither_spread,
             scale=dither.scale,
         )
-        return apply_ink(
+        engraving_result = apply_engraving(
             destruction_result,
+            palette.name,
+            palette.tones,
+            strength=engraving.strength,
+            detail=engraving.detail,
+            thickness=engraving.thickness,
+            direction=engraving.direction,
+        )
+        consumption_result = apply_black_consumption(
+            engraving_result,
+            palette.name,
+            palette.tones,
+            amount=black_consumption.amount,
+            reach=black_consumption.reach,
+            detail_swallow=black_consumption.detail_swallow,
+            dither_scale=dither.scale,
+        )
+        return apply_ink(
+            consumption_result,
             palette.name,
             palette.tones,
             ink_bleed=ink.ink_bleed,
