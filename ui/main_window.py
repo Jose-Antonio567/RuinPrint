@@ -157,6 +157,7 @@ class MainWindow(QMainWindow):
             self.tone_controls.parameters(),
             self.palette_controls.parameters(),
             self.dither_controls.parameters(),
+            self.dither_controls.destruction_parameters(),
             self.ink_controls.parameters(),
         )
         self.result_image_view.set_image(self.current_result_preview)

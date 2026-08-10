@@ -3,6 +3,7 @@
 import numpy as np
 from PIL import Image
 
+from effects.dither_modifiers import distorted_thresholds, modulate_luminance
 from effects.palette import (
     apply_palette,
     get_palette,
@@ -19,6 +20,10 @@ _CLUSTERED_DOT_4X4 = np.array(
     ((12, 5, 6, 13), (4, 0, 1, 7), (11, 3, 2, 8), (15, 10, 9, 14)),
     dtype=np.float32,
 )
+_CROSS_DITHER_5X5 = np.array(
+    ((21, 13, 9, 14, 22), (15, 5, 1, 6, 16), (10, 2, 0, 3, 11), (17, 7, 4, 8, 18), (23, 19, 12, 20, 24)),
+    dtype=np.float32,
+)
 
 
 def apply_dither(
@@ -28,12 +33,13 @@ def apply_dither(
     algorithm: str = "Off",
     strength: int = 70,
     scale: int = 1,
+    pattern_distortion: int = 0,
 ) -> Image.Image:
     """Return a newly dithered RGBA image with its original alpha channel intact."""
     if algorithm == "Off":
         return apply_palette(image, palette_name, tones)
 
-    if algorithm not in {"Bayer", "Clustered Dot", "Floyd-Steinberg", "Atkinson", "Noise"}:
+    if algorithm not in {"Bayer", "Clustered Dot", "Cross Dither", "Broken Dither", "Floyd-Steinberg", "Atkinson", "Noise"}:
         raise ValueError("Algoritmo de dithering inválido.")
 
     normalized_strength = float(np.clip(strength, 0, 100)) / 100.0
@@ -48,18 +54,32 @@ def apply_dither(
     work_luminance = _scaled_luminance(luminance, scale)
     if algorithm == "Bayer":
         color_indexes = _ordered_dither(
-            work_luminance, color_luminances, _BAYER_4X4, normalized_strength
+            work_luminance, color_luminances, _BAYER_4X4, normalized_strength, pattern_distortion
         )
     elif algorithm == "Clustered Dot":
         color_indexes = _ordered_dither(
-            work_luminance, color_luminances, _CLUSTERED_DOT_4X4, normalized_strength
+            work_luminance, color_luminances, _CLUSTERED_DOT_4X4, normalized_strength, pattern_distortion
+        )
+    elif algorithm == "Cross Dither":
+        color_indexes = _ordered_dither(
+            work_luminance, color_luminances, _CROSS_DITHER_5X5, normalized_strength, pattern_distortion
+        )
+    elif algorithm == "Broken Dither":
+        color_indexes = _ordered_dither(
+            work_luminance, color_luminances, _broken_pattern(work_luminance.shape), normalized_strength, pattern_distortion
         )
     elif algorithm == "Floyd-Steinberg":
-        color_indexes = _floyd_steinberg(work_luminance, color_luminances, normalized_strength)
+        color_indexes = _floyd_steinberg(
+            modulate_luminance(work_luminance, pattern_distortion), color_luminances, normalized_strength
+        )
     elif algorithm == "Atkinson":
-        color_indexes = _atkinson(work_luminance, color_luminances, normalized_strength)
+        color_indexes = _atkinson(
+            modulate_luminance(work_luminance, pattern_distortion), color_luminances, normalized_strength
+        )
     else:
-        color_indexes = _noise_dither(work_luminance, color_luminances, normalized_strength)
+        color_indexes = _noise_dither(
+            modulate_luminance(work_luminance, pattern_distortion), color_luminances, normalized_strength
+        )
 
     work_rgb = color_array[color_indexes]
     full_rgb = _expand_rgb(work_rgb, rgba_image.size)
@@ -93,15 +113,36 @@ def _ordered_dither(
     color_luminances: np.ndarray,
     threshold_matrix: np.ndarray,
     strength: float,
+    pattern_distortion: int,
 ) -> np.ndarray:
     height, width = luminance.shape
-    tiled_thresholds = np.tile(
-        threshold_matrix, (int(np.ceil(height / 4)), int(np.ceil(width / 4)))
-    )[:height, :width]
-    centered_thresholds = (tiled_thresholds + 0.5) / 16.0 - 0.5
+    tiled_thresholds = distorted_thresholds(
+        threshold_matrix, height, width, pattern_distortion
+    )
+    centered_thresholds = (tiled_thresholds + 0.5) / threshold_matrix.size - 0.5
     amplitude = strength / len(color_luminances)
     adjusted_luminance = np.clip(luminance + centered_thresholds * amplitude, 0.0, 1.0)
     return nearest_palette_indexes(adjusted_luminance, color_luminances)
+
+
+def _broken_pattern(shape: tuple[int, int]) -> np.ndarray:
+    """Build a Bayer-derived pattern with stable local phase and threshold defects."""
+    height, width = shape
+    random_generator = np.random.default_rng(4703)
+    block_size = 8
+    block_rows = int(np.ceil(height / block_size))
+    block_columns = int(np.ceil(width / block_size))
+    phase_x = random_generator.integers(0, 4, (block_rows, block_columns))
+    phase_y = random_generator.integers(0, 4, (block_rows, block_columns))
+    threshold_shift = random_generator.integers(-2, 3, (block_rows, block_columns))
+
+    y_coordinates, x_coordinates = np.indices(shape)
+    blocks_y, blocks_x = y_coordinates // block_size, x_coordinates // block_size
+    pattern = _BAYER_4X4[
+        (y_coordinates + phase_y[blocks_y, blocks_x]) % 4,
+        (x_coordinates + phase_x[blocks_y, blocks_x]) % 4,
+    ]
+    return np.mod(pattern + threshold_shift[blocks_y, blocks_x], 16).astype(np.float32)
 
 
 def _floyd_steinberg(

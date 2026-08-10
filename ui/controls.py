@@ -11,7 +11,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core.pipeline import DitherParameters, InkParameters, PaletteParameters, ToneParameters
+from core.pipeline import (
+    DitherDestructionParameters,
+    DitherParameters,
+    InkParameters,
+    PaletteParameters,
+    ToneParameters,
+)
 
 
 class ToneControls(QGroupBox):
@@ -161,7 +167,16 @@ class DitherControls(QGroupBox):
 
         self.mode_combo = QComboBox()
         self.mode_combo.addItems(
-            ("Off", "Bayer", "Clustered Dot", "Floyd-Steinberg", "Atkinson", "Noise")
+            (
+                "Off",
+                "Bayer",
+                "Clustered Dot",
+                "Cross Dither",
+                "Broken Dither",
+                "Floyd-Steinberg",
+                "Atkinson",
+                "Noise",
+            )
         )
         self.mode_combo.setCurrentText("Bayer")
         form_layout.addRow("Mode", self.mode_combo)
@@ -171,6 +186,15 @@ class DitherControls(QGroupBox):
         )
         self.scale_slider, self.scale_value = self._add_slider(
             form_layout, "Scale", 1, 8, 1
+        )
+        self.pattern_distortion_slider, self.pattern_distortion_value = self._add_slider(
+            form_layout, "Pattern Distortion", 0, 100, 0
+        )
+        self.dither_loss_slider, self.dither_loss_value = self._add_slider(
+            form_layout, "Dither Loss", 0, 100, 0
+        )
+        self.dither_spread_slider, self.dither_spread_value = self._add_slider(
+            form_layout, "Dither Spread", 0, 100, 0
         )
 
         self.mode_combo.currentTextChanged.connect(self.parameters_changed)
@@ -183,17 +207,34 @@ class DitherControls(QGroupBox):
             scale=self.scale_slider.value(),
         )
 
+    def destruction_parameters(self) -> DitherDestructionParameters:
+        """Return the current structural dither modifier values."""
+        return DitherDestructionParameters(
+            pattern_distortion=self.pattern_distortion_slider.value(),
+            dither_loss=self.dither_loss_slider.value(),
+            dither_spread=self.dither_spread_slider.value(),
+        )
+
     def reset(self) -> None:
         """Restore default dither values and emit one update."""
         self.mode_combo.blockSignals(True)
         self.strength_slider.blockSignals(True)
         self.scale_slider.blockSignals(True)
+        self.pattern_distortion_slider.blockSignals(True)
+        self.dither_loss_slider.blockSignals(True)
+        self.dither_spread_slider.blockSignals(True)
         self.mode_combo.setCurrentText("Bayer")
         self.strength_slider.setValue(70)
         self.scale_slider.setValue(1)
+        self.pattern_distortion_slider.setValue(0)
+        self.dither_loss_slider.setValue(0)
+        self.dither_spread_slider.setValue(0)
         self.mode_combo.blockSignals(False)
         self.strength_slider.blockSignals(False)
         self.scale_slider.blockSignals(False)
+        self.pattern_distortion_slider.blockSignals(False)
+        self.dither_loss_slider.blockSignals(False)
+        self.dither_spread_slider.blockSignals(False)
         self._refresh_value_labels()
         self.parameters_changed.emit()
 
@@ -226,6 +267,9 @@ class DitherControls(QGroupBox):
     def _refresh_value_labels(self) -> None:
         self.strength_value.setText(str(self.strength_slider.value()))
         self.scale_value.setText(str(self.scale_slider.value()))
+        self.pattern_distortion_value.setText(str(self.pattern_distortion_slider.value()))
+        self.dither_loss_value.setText(str(self.dither_loss_slider.value()))
+        self.dither_spread_value.setText(str(self.dither_spread_slider.value()))
 
 
 class InkControls(QGroupBox):

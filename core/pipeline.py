@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from PIL import Image
 
 from effects.dither import apply_dither
+from effects.dither_modifiers import apply_dither_destruction
 from effects.ink import apply_ink
 from effects.tone import apply_tone
 
@@ -37,6 +38,15 @@ class DitherParameters:
 
 
 @dataclass(frozen=True)
+class DitherDestructionParameters:
+    """Structural modifiers that alter the dither pattern before Print/Ink."""
+
+    pattern_distortion: int = 0
+    dither_loss: int = 0
+    dither_spread: int = 0
+
+
+@dataclass(frozen=True)
 class InkParameters:
     """Parameters for the Print/Ink stage of the image pipeline."""
 
@@ -56,9 +66,10 @@ class ImagePipeline:
         tone: ToneParameters,
         palette: PaletteParameters,
         dither: DitherParameters,
+        dither_destruction: DitherDestructionParameters,
         ink: InkParameters,
     ) -> Image.Image:
-        """Process a preview through Tone, Dither/Palette, then Print/Ink."""
+        """Process a preview through Tone, Dither, Destruction, then Print/Ink."""
         tone_result = apply_tone(
             original_preview,
             contrast=tone.contrast,
@@ -73,9 +84,18 @@ class ImagePipeline:
             dither.mode,
             dither.strength,
             dither.scale,
+            dither_destruction.pattern_distortion,
+        )
+        destruction_result = apply_dither_destruction(
+            dither_result,
+            palette.name,
+            palette.tones,
+            dither_loss=dither_destruction.dither_loss,
+            dither_spread=dither_destruction.dither_spread,
+            scale=dither.scale,
         )
         return apply_ink(
-            dither_result,
+            destruction_result,
             palette.name,
             palette.tones,
             ink_bleed=ink.ink_bleed,
