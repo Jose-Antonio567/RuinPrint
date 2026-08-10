@@ -13,8 +13,10 @@ class PresetManager:
         location = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppConfigLocation)
         self.path = Path(location) / "user_presets.json"
         self.presets: dict[str, dict] = {}
+        self.factory_presets: dict[str, dict] = {}
         self.load_error = False
         self.load()
+        self._load_factory()
 
     def load(self) -> None:
         if not self.path.exists():
@@ -33,8 +35,28 @@ class PresetManager:
         return sorted(self.presets, key=str.casefold)
 
     def get(self, name: str) -> dict | None:
-        value = self.presets.get(name)
+        value = self.factory_presets.get(name) or self.presets.get(name)
         return value.copy() if value else None
+
+    def is_factory(self, name: str) -> bool:
+        return name in self.factory_presets
+
+    def _load_factory(self) -> None:
+        factory_path = Path(__file__).parents[1] / "presets" / "factory_presets.json"
+        try:
+            overrides = json.loads(factory_path.read_text(encoding="utf-8")).get("presets", {})
+            defaults = self._defaults()
+            self.factory_presets = {name: self._merge(defaults, value) for name, value in overrides.items() if isinstance(value, dict)}
+        except (OSError, ValueError, json.JSONDecodeError):
+            self.factory_presets = {}
+
+    @staticmethod
+    def _merge(base: dict, override: dict) -> dict:
+        return {key: PresetManager._merge(value, override.get(key, {})) if isinstance(value, dict) else override.get(key, value) for key, value in base.items()}
+
+    @staticmethod
+    def _defaults() -> dict:
+        return {"tone":{"contrast":0,"black_crush":0,"highlight_burn":0,"gamma":1.0},"palette":{"name":"Aged Ivory","tones":4},"dither":{"mode":"Bayer","strength":70,"scale":1},"dither_destruction":{"pattern_distortion":0,"dither_loss":0,"dither_spread":0},"engraving":{"strength":0,"detail":35,"thickness":1,"direction":"Natural"},"black_consumption":{"amount":0,"reach":2,"detail_swallow":0},"ink":{"ink_bleed":0,"ink_loss":0,"paper_grain":0,"speckles":0,"print_misalignment":0},"focus":{"shape":"Horizontal","position_x":50,"position_y":50,"width":40,"softness":40,"angle":0,"blur":0},"lens":{"uneven_focus":0,"lens_smear":0,"smear_angle":0,"soft_bleed":0},"degradation":{"film_grain":0,"dust":0,"scratches":0,"edge_decay":0,"exposure_drift":0,"vignette":0,"image_fade":0}}
 
     def save(self, name: str, settings: dict) -> None:
         name = self._clean_name(name)

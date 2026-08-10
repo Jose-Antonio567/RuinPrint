@@ -3,7 +3,7 @@ from pathlib import Path
 
 from PIL import Image
 from PySide6.QtCore import QSettings, QThread, QTimer, QUrl, Qt
-from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDropEvent
+from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDropEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
     QGroupBox,
     QComboBox,
+    QCheckBox,
 )
 
 from core.image_loader import (
@@ -62,6 +63,7 @@ class MainWindow(QMainWindow):
         self.preset_manager = PresetManager()
         self.settings = QSettings("RuinPrint", "RuinPrint")
         self._applying_preset = False
+        self._syncing_views = False
         self._export_thread: QThread | None = None
         self._is_resetting_controls = False
         self._update_timer = QTimer(self)
@@ -94,12 +96,23 @@ class MainWindow(QMainWindow):
         self.reset_button = QPushButton("Redefinir")
         self.reset_button.clicked.connect(self.reset_tone_controls)
         top_bar_layout.addWidget(self.reset_button)
+        self.sync_views_checkbox = QCheckBox("Sincronizar visualização")
+        self.sync_views_checkbox.setChecked(True)
+        top_bar_layout.addWidget(self.sync_views_checkbox)
         top_bar_layout.addStretch()
 
         self.original_image_view = ImageView("Imagem original")
         self.result_image_view = ImageView("Resultado")
         self.original_image_view.setMinimumWidth(200)
         self.result_image_view.setMinimumWidth(200)
+        self.original_image_view.view_changed.connect(lambda: self._sync_view(self.original_image_view, self.result_image_view))
+        self.result_image_view.view_changed.connect(lambda: self._sync_view(self.result_image_view, self.original_image_view))
+        self.original_image_view.fileDropped.connect(self.load_image_from_path)
+        self.result_image_view.fileDropped.connect(self.load_image_from_path)
+        QShortcut(QKeySequence("Ctrl+0"), self, activated=self.fit_views)
+        QShortcut(QKeySequence("Ctrl+1"), self, activated=self.actual_views)
+        QShortcut(QKeySequence("+"), self, activated=lambda: self.original_image_view.zoom_by(1.15))
+        QShortcut(QKeySequence("-"), self, activated=lambda: self.original_image_view.zoom_by(1 / 1.15))
 
         settings_content = QWidget()
         settings_layout = QVBoxLayout(settings_content)
@@ -214,7 +227,7 @@ class MainWindow(QMainWindow):
         self.preview_image = preview_image
         self.current_result_preview = preview_image.copy()
 
-        self.original_image_view.set_image(self.preview_image)
+        self.original_image_view.set_image(self.preview_image, reset_view=True)
         self.update_result_preview()
 
     def update_result_preview(self) -> None:
@@ -237,6 +250,25 @@ class MainWindow(QMainWindow):
         )
         self.result_image_view.set_image(self.current_result_preview)
 
+    def _sync_view(self, source: ImageView, target: ImageView) -> None:
+        if not self.sync_views_checkbox.isChecked() or self._syncing_views:
+            return
+        self._syncing_views = True
+        try:
+            target.set_view_state(source.view_state())
+        finally:
+            self._syncing_views = False
+
+    def fit_views(self) -> None:
+        self.original_image_view.fit_to_view()
+        if self.sync_views_checkbox.isChecked():
+            self.result_image_view.fit_to_view()
+
+    def actual_views(self) -> None:
+        self.original_image_view.actual_size()
+        if self.sync_views_checkbox.isChecked():
+            self.result_image_view.actual_size()
+
     def current_pipeline_settings(self) -> PipelineSettings:
         """Capture all visible controls as one immutable processing snapshot."""
         return PipelineSettings(
@@ -253,13 +285,15 @@ class MainWindow(QMainWindow):
         self.preset_combo.blockSignals(True)
         self.preset_combo.clear()
         self.preset_combo.addItem("Personalizado")
+        self.preset_combo.addItems([f"Factory: {name}" for name in self.preset_manager.factory_presets])
         self.preset_combo.addItems(self.preset_manager.names())
-        self.preset_combo.setCurrentText(selected if selected in self.preset_manager.presets else "Personalizado")
+        factory_label = f"Factory: {selected}"
+        self.preset_combo.setCurrentText(factory_label if selected in self.preset_manager.factory_presets else (selected if selected in self.preset_manager.presets else "Personalizado"))
         self.preset_combo.blockSignals(False)
 
     def _preset_name(self) -> str | None:
         name = self.preset_combo.currentText()
-        return None if name == "Personalizado" else name
+        return None if name == "Personalizado" or name.startswith("Factory: ") else name
 
     def save_preset_as(self) -> None:
         name, accepted = QInputDialog.getText(self, "Salvar preset", "Nome do preset:")
@@ -300,7 +334,12 @@ class MainWindow(QMainWindow):
             self._refresh_preset_combo()
 
     def load_selected_preset(self, name: str) -> None:
-        values = self.preset_manager.get(name)
+        preset_name = name.removeprefix("Factory: ")
+        factory = self.preset_manager.is_factory(preset_name)
+        self.update_preset_button.setEnabled(not factory and name != "Personalizado")
+        self.rename_preset_button.setEnabled(not factory and name != "Personalizado")
+        self.delete_preset_button.setEnabled(not factory and name != "Personalizado")
+        values = self.preset_manager.get(preset_name)
         if values is None:
             return
         self._applying_preset = True
@@ -393,6 +432,9 @@ class MainWindow(QMainWindow):
                 self.preset_combo.blockSignals(True)
                 self.preset_combo.setCurrentText("Personalizado")
                 self.preset_combo.blockSignals(False)
+                self.update_preset_button.setEnabled(False)
+                self.rename_preset_button.setEnabled(False)
+                self.delete_preset_button.setEnabled(False)
             self._update_timer.start()
 
     def reset_tone_controls(self) -> None:
@@ -551,6 +593,9 @@ class MainWindow(QMainWindow):
             #workspace[dropActive="true"] {
                 border: 2px dashed #9d8a63;
                 border-radius: 6px;
+            }
+            #imageView[dropActive="true"] {
+                border: 2px dashed #9d8a63;
             }
             """
         )

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "presets": {
+    "Relic": {"tone":{"contrast":62,"black_crush":45,"highlight_burn":34,"gamma":0.95},"dither":{"mode":"Broken Dither","strength":90,"scale":2},"dither_destruction":{"pattern_distortion":24,"dither_loss":12,"dither_spread":6},"focus":{"width":38,"softness":55,"angle":4,"blur":38},"degradation":{"film_grain":14,"dust":6,"scratches":3,"edge_decay":12,"exposure_drift":10,"vignette":8,"image_fade":6}},
+    "Grave Print": {"tone":{"contrast":82,"black_crush":68,"highlight_burn":40,"gamma":0.9},"palette":{"tones":3},"dither":{"strength":100,"scale":2},"engraving":{"strength":38,"detail":20,"thickness":2},"black_consumption":{"amount":55,"reach":3,"detail_swallow":40},"focus":{"blur":20}},
+    "Ancient Film": {"tone":{"contrast":35,"black_crush":20,"highlight_burn":38},"palette":{"name":"Warm Sepia","tones":5},"dither":{"mode":"Atkinson","strength":55},"focus":{"width":42,"softness":70,"angle":-5,"blur":55},"lens":{"uneven_focus":45,"lens_smear":18,"smear_angle":8,"soft_bleed":38},"degradation":{"film_grain":38,"dust":22,"scratches":20,"edge_decay":28,"exposure_drift":38,"vignette":22,"image_fade":18}},
+    "Old Engraving": {"tone":{"contrast":60,"black_crush":35,"highlight_burn":18},"palette":{"name":"Neutral","tones":3},"dither":{"mode":"Cross Dither","strength":72},"engraving":{"strength":70,"detail":48},"black_consumption":{"amount":18,"reach":1},"degradation":{"film_grain":8,"dust":3,"edge_decay":7,"image_fade":4}},
+    "Ghost Print": {"tone":{"contrast":42,"black_crush":18,"highlight_burn":62,"gamma":1.1},"palette":{"name":"Cold Ash","tones":4},"dither":{"mode":"Noise","strength":55},"dither_destruction":{"pattern_distortion":12,"dither_loss":32},"ink":{"ink_loss":38,"paper_grain":32,"speckles":12},"focus":{"shape":"Elliptical","position_y":48,"width":48,"softness":85,"blur":48},"lens":{"uneven_focus":35,"lens_smear":10,"soft_bleed":55},"degradation":{"film_grain":22,"dust":15,"scratches":8,"edge_decay":36,"exposure_drift":26,"vignette":8,"image_fade":38}}
+  }
+}
