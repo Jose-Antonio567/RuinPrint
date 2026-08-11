@@ -22,6 +22,8 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QComboBox,
     QCheckBox,
+    QListWidget,
+    QLabel,
 )
 
 from core.image_loader import (
@@ -34,6 +36,7 @@ from core.pipeline import PipelineSettings
 from core.preset_manager import PresetManager
 from core.edit_history import EditHistory
 from core.preview_render_controller import PreviewRenderController
+from core.image_document import ImageDocument
 from workers.export_worker import ExportWorker
 from ui.controls import (
     BlackConsumptionControls,
@@ -60,6 +63,8 @@ class MainWindow(QMainWindow):
         self.setAcceptDrops(True)
 
         self.current_image_path: str | None = None
+        self.documents: list[ImageDocument] = []
+        self.active_document_index: int = -1
         self.original_image: Image.Image | None = None
         self.preview_image: Image.Image | None = None
         self.current_result_preview: Image.Image | None = None
@@ -131,6 +136,17 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+1"), self, activated=self.actual_views)
         QShortcut(QKeySequence("+"), self, activated=lambda: self.original_image_view.zoom_by(1.15))
         QShortcut(QKeySequence("-"), self, activated=lambda: self.original_image_view.zoom_by(1 / 1.15))
+        self.image_list = QListWidget()
+        self.image_list.currentRowChanged.connect(self.set_active_document)
+        self.image_list.setMaximumHeight(92)
+        self.remove_image_button = QPushButton("Remover")
+        self.remove_image_button.clicked.connect(self.remove_active_document)
+        image_batch_bar = QWidget()
+        image_batch_layout = QHBoxLayout(image_batch_bar)
+        image_batch_layout.setContentsMargins(0, 0, 0, 0)
+        image_batch_layout.addWidget(QLabel("IMAGENS"))
+        image_batch_layout.addWidget(self.image_list, 1)
+        image_batch_layout.addWidget(self.remove_image_button)
         QShortcut(QKeySequence("Ctrl+Z"), self, activated=self.undo)
         QShortcut(QKeySequence("Ctrl+Shift+Z"), self, activated=self.redo)
         QShortcut(QKeySequence("Ctrl+Y"), self, activated=self.redo)
@@ -213,6 +229,7 @@ class MainWindow(QMainWindow):
         self.workspace.setSizes((350, 350, 300))
 
         main_layout.addWidget(top_bar)
+        main_layout.addWidget(image_batch_bar)
         main_layout.addWidget(self.workspace, 1)
         self.export_progress = QProgressBar()
         self.export_progress.setRange(0, 100)
@@ -242,7 +259,11 @@ class MainWindow(QMainWindow):
 
     def load_image_from_path(self, image_path: str) -> None:
         """Load an image and create all display state used by the application."""
-
+        normalized_path = str(Path(image_path).resolve())
+        for index, document in enumerate(self.documents):
+            if document.path == normalized_path:
+                self.image_list.setCurrentRow(index)
+                return
         try:
             original_image = load_image(image_path)
             preview_image = create_preview(original_image)
@@ -254,17 +275,40 @@ class MainWindow(QMainWindow):
             )
             return
 
-        self.current_image_path = image_path
-        self.original_image = original_image
-        self.preview_image = preview_image
-        self.current_result_preview = preview_image.copy()
-        self.preview_controller.invalidate()
-        self.history.clear()
-        self._last_settings = asdict(self.current_pipeline_settings())
-        self._update_history_buttons()
+        self.documents.append(ImageDocument(normalized_path, original_image, preview_image))
+        self.image_list.addItem(Path(normalized_path).name)
+        self.image_list.setCurrentRow(len(self.documents) - 1)
 
+    def set_active_document(self, row: int) -> None:
+        """Switch the active source document without changing global settings."""
+        if row < 0 or row >= len(self.documents):
+            return
+        document = self.documents[row]
+        self.active_document_index = row
+        self.current_image_path = document.path
+        self.original_image = document.original_full
+        self.preview_image = document.preview_original
+        self.current_result_preview = document.preview_original.copy()
+        self.preview_controller.invalidate()
         self.original_image_view.set_image(self.preview_image, reset_view=True)
+        self.result_image_view.set_image(self.current_result_preview, reset_view=True)
         self.update_result_preview()
+
+    def remove_active_document(self) -> None:
+        row = self.image_list.currentRow()
+        if row < 0 or row >= len(self.documents):
+            return
+        self.documents.pop(row)
+        self.image_list.takeItem(row)
+        if self.documents:
+            self.image_list.setCurrentRow(min(row, len(self.documents) - 1))
+            return
+        self.active_document_index = -1
+        self.current_image_path = None
+        self.original_image = self.preview_image = self.current_result_preview = None
+        self.preview_controller.invalidate()
+        self.original_image_view.clear_image()
+        self.result_image_view.clear_image()
 
     def update_result_preview(self) -> None:
         """Rebuild the result from the untouched original preview and current controls."""
@@ -430,7 +474,8 @@ class MainWindow(QMainWindow):
         self.export_progress.setValue(0)
         self.export_progress.show()
         self._export_thread = QThread(self)
-        worker = ExportWorker(self.original_image, settings, output_path, scale)
+        self._export_worker = ExportWorker(self.original_image, settings, output_path, scale)
+        worker = self._export_worker
         worker.moveToThread(self._export_thread)
         self._export_thread.started.connect(worker.run)
         worker.progress.connect(self.export_progress.setValue)
@@ -455,6 +500,7 @@ class MainWindow(QMainWindow):
         self.export_button.setEnabled(True)
         self.export_progress.hide()
         self._export_thread = None
+        self._export_worker = None
 
     def schedule_result_update(self) -> None:
         """Debounce preview recalculation while controls are being adjusted."""
