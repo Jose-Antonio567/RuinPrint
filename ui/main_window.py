@@ -8,6 +8,7 @@ from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDropEvent, QKeySequ
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
+    QFrame,
     QHBoxLayout,
     QInputDialog,
     QMainWindow,
@@ -50,6 +51,7 @@ from ui.controls import (
     ToneControls,
 )
 from ui.image_view import ImageView
+from ui.theme import APP_STYLESHEET
 
 
 class MainWindow(QMainWindow):
@@ -101,11 +103,14 @@ class MainWindow(QMainWindow):
         top_bar.setObjectName("topBar")
         top_bar_layout = QHBoxLayout(top_bar)
         top_bar_layout.setContentsMargins(14, 12, 14, 12)
-        top_bar_layout.setSpacing(10)
+        top_bar_layout.setSpacing(8)
 
+        self._add_toolbar_group_label(top_bar_layout, "ARQUIVO")
         self.import_button = QPushButton("Importar imagem")
         self.import_button.clicked.connect(self.import_image)
         top_bar_layout.addWidget(self.import_button)
+        self._add_toolbar_separator(top_bar_layout)
+        self._add_toolbar_group_label(top_bar_layout, "EDIÇÃO")
         self.undo_button = QPushButton("Desfazer")
         self.redo_button = QPushButton("Refazer")
         self.undo_button.clicked.connect(self.undo); self.redo_button.clicked.connect(self.redo)
@@ -116,6 +121,8 @@ class MainWindow(QMainWindow):
         self.reset_button = QPushButton("Redefinir")
         self.reset_button.clicked.connect(self.reset_tone_controls)
         top_bar_layout.addWidget(self.reset_button)
+        self._add_toolbar_separator(top_bar_layout)
+        self._add_toolbar_group_label(top_bar_layout, "VISUALIZAR")
         self.before_button = QPushButton("Antes (B)")
         self.before_button.pressed.connect(self.show_before); self.before_button.released.connect(self.show_after)
         top_bar_layout.addWidget(self.before_button)
@@ -138,6 +145,9 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+1"), self, activated=self.actual_views)
         QShortcut(QKeySequence("+"), self, activated=lambda: self.original_image_view.zoom_by(1.15))
         QShortcut(QKeySequence("-"), self, activated=lambda: self.original_image_view.zoom_by(1 / 1.15))
+        self.image_list_title = QLabel()
+        self.image_list_title.setObjectName("imageListTitle")
+        self._update_image_list_title()
         self.image_list = QListWidget()
         self.image_list.currentRowChanged.connect(self.set_active_document)
         self.image_list.setMaximumHeight(92)
@@ -146,7 +156,7 @@ class MainWindow(QMainWindow):
         image_batch_bar = QWidget()
         image_batch_layout = QHBoxLayout(image_batch_bar)
         image_batch_layout.setContentsMargins(0, 0, 0, 0)
-        image_batch_layout.addWidget(QLabel("IMAGENS"))
+        image_batch_layout.addWidget(self.image_list_title)
         image_batch_layout.addWidget(self.image_list, 1)
         image_batch_layout.addWidget(self.remove_image_button)
         QShortcut(QKeySequence("Ctrl+Z"), self, activated=self.undo)
@@ -246,6 +256,23 @@ class MainWindow(QMainWindow):
             slider.sliderReleased.connect(self._commit_slider_edit)
         self._update_history_buttons()
 
+    @staticmethod
+    def _add_toolbar_group_label(layout: QHBoxLayout, label: str) -> None:
+        group_label = QLabel(label)
+        group_label.setObjectName("toolGroupLabel")
+        layout.addWidget(group_label)
+
+    @staticmethod
+    def _add_toolbar_separator(layout: QHBoxLayout) -> None:
+        separator = QFrame()
+        separator.setObjectName("toolbarSeparator")
+        separator.setFrameShape(QFrame.Shape.VLine)
+        layout.addWidget(separator)
+
+    def _update_image_list_title(self) -> None:
+        if hasattr(self, "image_list_title"):
+            self.image_list_title.setText(f"IMAGENS ({len(self.documents)})")
+
     def import_image(self) -> None:
         """Choose an image and send it through the shared loading flow."""
         image_path, _ = QFileDialog.getOpenFileName(
@@ -279,6 +306,7 @@ class MainWindow(QMainWindow):
 
         self.documents.append(ImageDocument(normalized_path, original_image, preview_image))
         self.image_list.addItem(Path(normalized_path).name)
+        self._update_image_list_title()
         self.image_list.setCurrentRow(len(self.documents) - 1)
 
     def add_images_from_paths(self, paths: list[str]) -> None:
@@ -306,6 +334,7 @@ class MainWindow(QMainWindow):
             return
         self.documents.pop(row)
         self.image_list.takeItem(row)
+        self._update_image_list_title()
         if self.documents:
             self.image_list.setCurrentRow(min(row, len(self.documents) - 1))
             return
@@ -460,6 +489,7 @@ class MainWindow(QMainWindow):
             self.lens_controls, self.degradation_controls,
         ):
             widget._refresh_value_labels()
+        self.palette_controls._update_swatches()
 
     def export_png(self) -> None:
         if self.original_image is None:
@@ -495,7 +525,7 @@ class MainWindow(QMainWindow):
 
     def _export_finished(self, output_path: str) -> None:
         self._finish_export()
-        QMessageBox.information(self, "Exportar PNG", f"Imagem exportada com sucesso.\n\n{output_path}")
+        self.statusBar().showMessage(f"Exportado: {Path(output_path).name}", 5000)
 
     def _export_failed(self, message: str) -> None:
         self._finish_export()
@@ -655,87 +685,4 @@ class MainWindow(QMainWindow):
         self.workspace.style().polish(self.workspace)
 
     def _apply_theme(self) -> None:
-        self.setStyleSheet(
-            """
-            QMainWindow, QWidget {
-                background: #181818;
-                color: #e7e7e7;
-                font-family: Segoe UI, sans-serif;
-                font-size: 13px;
-            }
-            #topBar {
-                background: #222222;
-                border: 1px solid #333333;
-                border-radius: 6px;
-            }
-            QPushButton {
-                background: #303030;
-                border: 1px solid #484848;
-                border-radius: 4px;
-                padding: 8px 12px;
-            }
-            QPushButton:hover {
-                background: #3a3a3a;
-            }
-            #imageView {
-                background: #202020;
-                border: 1px solid #363636;
-                border-radius: 6px;
-            }
-            #panelTitle {
-                font-size: 15px;
-                font-weight: 600;
-            }
-            #imagePlaceholder {
-                background: #191919;
-                border: 1px dashed #454545;
-                border-radius: 4px;
-                color: #8d8d8d;
-            }
-            #settingsPanel, #settingsPanel > QWidget {
-                background: #202020;
-                border: 1px solid #363636;
-                border-radius: 6px;
-            }
-            #toneControls, #paletteControls, #ditherControls, #engravingControls, #blackConsumptionControls, #inkControls, #focusControls, #lensControls, #degradationControls {
-                border: 1px solid #424242;
-                border-radius: 5px;
-                margin-top: 8px;
-                padding: 8px;
-            }
-            #toneControls::title, #paletteControls::title, #ditherControls::title, #engravingControls::title, #blackConsumptionControls::title, #inkControls::title, #focusControls::title, #lensControls::title, #degradationControls::title {
-                subcontrol-origin: margin;
-                left: 9px;
-                padding: 0 4px;
-                color: #cfcfcf;
-                font-weight: 600;
-            }
-            #controlValue {
-                color: #bcbcbc;
-            }
-            QSlider::groove:horizontal {
-                height: 4px;
-                background: #3a3a3a;
-                border-radius: 2px;
-            }
-            QSlider::handle:horizontal {
-                width: 12px;
-                margin: -4px 0;
-                background: #bbbbbb;
-                border-radius: 6px;
-            }
-            QComboBox {
-                background: #303030;
-                border: 1px solid #484848;
-                border-radius: 4px;
-                padding: 5px 8px;
-            }
-            #workspace[dropActive="true"] {
-                border: 2px dashed #9d8a63;
-                border-radius: 6px;
-            }
-            #imageView[dropActive="true"] {
-                border: 2px dashed #9d8a63;
-            }
-            """
-        )
+        self.setStyleSheet(APP_STYLESHEET)

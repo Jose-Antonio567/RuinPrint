@@ -7,9 +7,38 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QSlider,
+    QVBoxLayout,
     QWidget,
 )
+
+
+class CollapsibleSection(QWidget):
+    """Reusable header/content wrapper that hides controls without recreating them."""
+
+    toggled = Signal(bool)
+
+    def __init__(self, title: str, content: QWidget, expanded: bool = True, parent=None) -> None:
+        super().__init__(parent)
+        self._content = content
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.header = QPushButton(title)
+        self.header.setObjectName("sectionHeader")
+        self.header.clicked.connect(self.toggle)
+        layout.addWidget(self.header)
+        layout.addWidget(content)
+        self.set_expanded(expanded, emit=False)
+
+    def set_expanded(self, expanded: bool, emit: bool = True) -> None:
+        self._expanded = expanded
+        self._content.setVisible(expanded)
+        self.header.setText(("▼ " if expanded else "▶ ") + self.header.text().lstrip("▼ ▶"))
+        if emit: self.toggled.emit(expanded)
+
+    def toggle(self) -> None:
+        self.set_expanded(not self._expanded)
 
 from core.pipeline import (
     BlackConsumptionParameters,
@@ -167,6 +196,7 @@ class PaletteControls(QGroupBox):
         self.tones_combo.setCurrentText("4")
         self.palette_combo.blockSignals(False)
         self.tones_combo.blockSignals(False)
+        self._update_swatches()
         self.parameters_changed.emit()
 
 
