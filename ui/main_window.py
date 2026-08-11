@@ -33,6 +33,7 @@ from core.pipeline import ImagePipeline
 from core.pipeline import PipelineSettings
 from core.preset_manager import PresetManager
 from core.edit_history import EditHistory
+from core.preview_render_controller import PreviewRenderController
 from workers.export_worker import ExportWorker
 from ui.controls import (
     BlackConsumptionControls,
@@ -70,6 +71,10 @@ class MainWindow(QMainWindow):
         self.history = EditHistory()
         self._history_suspended = False
         self._before_active = False
+        self.preview_controller = PreviewRenderController(self)
+        self.preview_controller.result_ready.connect(self._preview_ready)
+        self.preview_controller.status_changed.connect(self._set_preview_status)
+        self.statusBar().showMessage("Preview: pronto")
         self._export_thread: QThread | None = None
         self._is_resetting_controls = False
         self._update_timer = QTimer(self)
@@ -253,6 +258,7 @@ class MainWindow(QMainWindow):
         self.original_image = original_image
         self.preview_image = preview_image
         self.current_result_preview = preview_image.copy()
+        self.preview_controller.invalidate()
         self.history.clear()
         self._last_settings = asdict(self.current_pipeline_settings())
         self._update_history_buttons()
@@ -265,21 +271,15 @@ class MainWindow(QMainWindow):
         if self.preview_image is None:
             return
 
-        self.current_result_preview = self.pipeline.process_preview(
-            self.preview_image,
-            self.tone_controls.parameters(),
-            self.palette_controls.parameters(),
-            self.dither_controls.parameters(),
-            self.dither_controls.destruction_parameters(),
-            self.engraving_controls.parameters(),
-            self.black_consumption_controls.parameters(),
-            self.ink_controls.parameters(),
-            self.focus_controls.parameters(),
-            self.lens_controls.parameters(),
-            self.degradation_controls.parameters(),
-        )
+        self.preview_controller.request(self.preview_image, self.current_pipeline_settings())
+
+    def _preview_ready(self, generation: int, image: Image.Image) -> None:
+        self.current_result_preview = image
         if not self._before_active:
-            self.result_image_view.set_image(self.current_result_preview)
+            self.result_image_view.set_image(image)
+
+    def _set_preview_status(self, status: str) -> None:
+        self.statusBar().showMessage(status)
 
     def _sync_view(self, source: ImageView, target: ImageView) -> None:
         if not self.sync_views_checkbox.isChecked() or self._syncing_views:
