@@ -35,6 +35,19 @@ PALETTES: dict[str, dict[int, tuple[tuple[int, int, int], ...]]] = {
     },
 }
 
+_MASTER_PALETTES = {
+    "Bone & Soot": ((9,9,8),(40,39,36),(76,73,67),(118,113,102),(170,162,145),(224,215,193)),
+    "Newsprint": ((12,12,11),(45,44,41),(83,81,75),(124,121,111),(171,167,152),(218,214,196)),
+    "Silver Gelatin": ((8,10,12),(36,41,45),(72,80,86),(113,123,129),(163,171,176),(219,223,224)),
+    "Oxide Brown": ((15,10,8),(55,35,28),(93,58,45),(132,85,64),(174,129,101),(222,190,155)),
+    "Moss Archive": ((10,12,8),(37,42,28),(72,78,50),(108,113,76),(155,157,112),(214,208,165)),
+    "Faded Blueprint": ((8,11,14),(31,43,52),(59,76,87),(94,111,121),(143,157,164),(207,214,215)),
+    "Dust Rose": ((14,10,11),(48,35,38),(81,60,64),(119,90,93),(162,127,129),(216,183,178)),
+    "Parchment": ((14,11,8),(50,42,31),(88,73,53),(128,108,79),(175,151,114),(228,205,163)),
+}
+_TONE_INDEXES = {2:(0,5), 3:(0,3,5), 4:(0,2,4,5), 5:(0,1,3,4,5), 6:(0,1,2,3,4,5)}
+PALETTES.update({name: {tones: tuple(master[index] for index in indexes) for tones, indexes in _TONE_INDEXES.items()} for name, master in _MASTER_PALETTES.items()})
+
 
 def get_palette(palette_name: str, tones: int) -> tuple[tuple[int, int, int], ...]:
     """Return the explicit RGB colors for a palette selection."""

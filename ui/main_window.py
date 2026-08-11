@@ -132,6 +132,8 @@ class MainWindow(QMainWindow):
         self.result_image_view.view_changed.connect(lambda: self._sync_view(self.result_image_view, self.original_image_view))
         self.original_image_view.fileDropped.connect(self.load_image_from_path)
         self.result_image_view.fileDropped.connect(self.load_image_from_path)
+        self.original_image_view.filesDropped.connect(self.add_images_from_paths)
+        self.result_image_view.filesDropped.connect(self.add_images_from_paths)
         QShortcut(QKeySequence("Ctrl+0"), self, activated=self.fit_views)
         QShortcut(QKeySequence("Ctrl+1"), self, activated=self.actual_views)
         QShortcut(QKeySequence("+"), self, activated=lambda: self.original_image_view.zoom_by(1.15))
@@ -278,6 +280,10 @@ class MainWindow(QMainWindow):
         self.documents.append(ImageDocument(normalized_path, original_image, preview_image))
         self.image_list.addItem(Path(normalized_path).name)
         self.image_list.setCurrentRow(len(self.documents) - 1)
+
+    def add_images_from_paths(self, paths: list[str]) -> None:
+        for path in paths:
+            self.load_image_from_path(path)
 
     def set_active_document(self, row: int) -> None:
         """Switch the active source document without changing global settings."""
@@ -618,24 +624,30 @@ class MainWindow(QMainWindow):
 
     def dropEvent(self, event: QDropEvent) -> None:
         """Load the first valid local image from a drop operation."""
-        image_path = self._first_supported_drop_path(event.mimeData().urls())
+        image_paths = self._supported_drop_paths(event.mimeData().urls())
         self._set_drop_feedback(False)
-        if image_path is None:
+        if not image_paths:
             event.ignore()
             return
 
-        self.load_image_from_path(image_path)
+        self.add_images_from_paths(image_paths)
         event.acceptProposedAction()
 
     @staticmethod
     def _first_supported_drop_path(urls: list[QUrl]) -> str | None:
+        paths = MainWindow._supported_drop_paths(urls)
+        return paths[0] if paths else None
+
+    @staticmethod
+    def _supported_drop_paths(urls: list[QUrl]) -> list[str]:
+        paths = []
         for url in urls:
             if not url.isLocalFile():
                 continue
             image_path = url.toLocalFile()
             if image_path and image_path.lower().endswith(tuple(SUPPORTED_IMAGE_EXTENSIONS)):
-                return image_path
-        return None
+                paths.append(image_path)
+        return paths
 
     def _set_drop_feedback(self, is_active: bool) -> None:
         self.workspace.setProperty("dropActive", is_active)

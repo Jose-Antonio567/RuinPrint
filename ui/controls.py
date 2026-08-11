@@ -23,6 +23,7 @@ from core.pipeline import (
     PaletteParameters,
     ToneParameters,
 )
+from effects.palette import PALETTES, get_palette
 
 
 class ToneControls(QGroupBox):
@@ -128,7 +129,7 @@ class PaletteControls(QGroupBox):
         form_layout.setSpacing(12)
 
         self.palette_combo = QComboBox()
-        self.palette_combo.addItems(("Neutral", "Aged Ivory", "Warm Sepia", "Cold Ash"))
+        self.palette_combo.addItems(tuple(PALETTES))
         self.palette_combo.setCurrentText("Aged Ivory")
         form_layout.addRow("Palette", self.palette_combo)
 
@@ -136,9 +137,20 @@ class PaletteControls(QGroupBox):
         self.tones_combo.addItems(("2", "3", "4", "5", "6"))
         self.tones_combo.setCurrentText("4")
         form_layout.addRow("Tones", self.tones_combo)
+        self.swatches = QLabel()
+        self.swatches.setFixedHeight(22)
+        form_layout.addRow("", self.swatches)
 
         self.palette_combo.currentTextChanged.connect(self.parameters_changed)
         self.tones_combo.currentTextChanged.connect(self.parameters_changed)
+        self.palette_combo.currentTextChanged.connect(self._update_swatches)
+        self.tones_combo.currentTextChanged.connect(self._update_swatches)
+        self._update_swatches()
+
+    def _update_swatches(self) -> None:
+        colors = get_palette(self.palette_combo.currentText(), int(self.tones_combo.currentText()))
+        stops = ", ".join(f"rgb({r},{g},{b}) {index * 100 / len(colors):.1f}%, rgb({r},{g},{b}) {(index + 1) * 100 / len(colors):.1f}%" for index, (r,g,b) in enumerate(colors))
+        self.swatches.setStyleSheet(f"border: 1px solid #444; border-radius: 3px; background: qlineargradient(x1:0,y1:0,x2:1,y2:0, {stops});")
 
     def parameters(self) -> PaletteParameters:
         """Return the current palette selection."""

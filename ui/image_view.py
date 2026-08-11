@@ -14,6 +14,7 @@ class ImageView(QFrame):
 
     view_changed = Signal()
     fileDropped = Signal(str)
+    filesDropped = Signal(object)
 
     def __init__(self, title: str, parent=None) -> None:
         super().__init__(parent)
@@ -114,10 +115,10 @@ class ImageView(QFrame):
                 self.setProperty("dropActive", False); self.style().unpolish(self); self.style().polish(self)
                 return False
             if event.type() == QEvent.Type.Drop:
-                path = self._drop_path(event.mimeData().urls())
+                paths = self._drop_paths(event.mimeData().urls())
                 self.setProperty("dropActive", False); self.style().unpolish(self); self.style().polish(self)
-                if path:
-                    self.fileDropped.emit(path); event.acceptProposedAction(); return True
+                if paths:
+                    self.filesDropped.emit(paths); event.acceptProposedAction(); return True
             if event.type() == QEvent.Type.Wheel and self._source_pixmap is not None:
                 self.zoom_by(1.15 if event.angleDelta().y() > 0 else 1 / 1.15); return True
             if event.type() == QEvent.Type.MouseButtonPress and (event.button() == Qt.MouseButton.MiddleButton or (event.button() == Qt.MouseButton.LeftButton and event.modifiers() & Qt.KeyboardModifier.SpaceModifier)):
@@ -138,11 +139,17 @@ class ImageView(QFrame):
 
     @staticmethod
     def _drop_path(urls) -> str | None:
+        paths = ImageView._drop_paths(urls)
+        return paths[0] if paths else None
+
+    @staticmethod
+    def _drop_paths(urls) -> list[str]:
+        paths = []
         for url in urls:
             path = url.toLocalFile() if url.isLocalFile() else ""
             if path and path.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp")):
-                return path
-        return None
+                paths.append(path)
+        return paths
 
     def _update_label(self) -> None:
         self.zoom_label.setText(f"{round(self._zoom * 100)}%")
