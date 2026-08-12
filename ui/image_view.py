@@ -22,6 +22,9 @@ class ImageView(QFrame):
         self.setAcceptDrops(True)
         self._zoom = 1.0
         self._panning = False
+        self._pan_button = Qt.MouseButton.NoButton
+        self._pan_position = None
+        self._space_pressed = False
         self._source_pixmap: QPixmap | None = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
@@ -41,7 +44,10 @@ class ImageView(QFrame):
         self.view.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
         self.view.setDragMode(QGraphicsView.DragMode.NoDrag)
         self.view.setBackgroundBrush(Qt.GlobalColor.black)
+        self.view.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.view.setAcceptDrops(True)
+        self.view.installEventFilter(self)
+        self.view.viewport().setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.view.viewport().setAcceptDrops(True)
         self.view.viewport().installEventFilter(self)
         layout.addWidget(self.view, 1)
@@ -106,6 +112,26 @@ class ImageView(QFrame):
         self._update_label()
 
     def eventFilter(self, watched, event):
+        if watched is self.view:
+            if event.type() == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Space:
+                if not event.isAutoRepeat():
+                    self._space_pressed = True
+                    if not self._panning:
+                        self.view.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
+                event.accept()
+                return True
+            if event.type() == QEvent.Type.KeyRelease and event.key() == Qt.Key.Key_Space:
+                if not event.isAutoRepeat():
+                    self._space_pressed = False
+                    if not self._panning:
+                        self.view.viewport().unsetCursor()
+                event.accept()
+                return True
+            if event.type() == QEvent.Type.FocusOut:
+                self._space_pressed = False
+                if not self._panning:
+                    self.view.viewport().unsetCursor()
+
         if watched is self.view.viewport():
             if event.type() in (QEvent.Type.DragEnter, QEvent.Type.DragMove):
                 if self._drop_path(event.mimeData().urls()):
@@ -121,11 +147,49 @@ class ImageView(QFrame):
                     self.filesDropped.emit(paths); event.acceptProposedAction(); return True
             if event.type() == QEvent.Type.Wheel and self._source_pixmap is not None:
                 self.zoom_by(1.15 if event.angleDelta().y() > 0 else 1 / 1.15); return True
-            if event.type() == QEvent.Type.MouseButtonPress and (event.button() == Qt.MouseButton.MiddleButton or (event.button() == Qt.MouseButton.LeftButton and event.modifiers() & Qt.KeyboardModifier.SpaceModifier)):
-                self._panning = True; self.view.setDragMode(QGraphicsView.DragMode.ScrollHandDrag); self.view.viewport().setCursor(Qt.CursorShape.ClosedHandCursor)
-                return False
-            if event.type() == QEvent.Type.MouseButtonRelease and self._panning:
-                self._panning = False; self.view.setDragMode(QGraphicsView.DragMode.NoDrag); self.view.viewport().unsetCursor(); self.view_changed.emit()
+            if event.type() == QEvent.Type.MouseButtonPress:
+                self.view.setFocus(Qt.FocusReason.MouseFocusReason)
+                should_pan = (
+                    event.button() == Qt.MouseButton.MiddleButton
+                    or (
+                        event.button() == Qt.MouseButton.LeftButton
+                        and self._space_pressed
+                    )
+                )
+                if should_pan:
+                    self._panning = True
+                    self._pan_button = event.button()
+                    self._pan_position = event.position().toPoint()
+                    self.view.viewport().setCursor(Qt.CursorShape.ClosedHandCursor)
+                    event.accept()
+                    return True
+            if event.type() == QEvent.Type.MouseMove and self._panning:
+                position = event.position().toPoint()
+                delta = position - self._pan_position
+                self.view.horizontalScrollBar().setValue(
+                    self.view.horizontalScrollBar().value() - delta.x()
+                )
+                self.view.verticalScrollBar().setValue(
+                    self.view.verticalScrollBar().value() - delta.y()
+                )
+                self._pan_position = position
+                event.accept()
+                return True
+            if (
+                event.type() == QEvent.Type.MouseButtonRelease
+                and self._panning
+                and event.button() == self._pan_button
+            ):
+                self._panning = False
+                self._pan_button = Qt.MouseButton.NoButton
+                self._pan_position = None
+                if self._space_pressed:
+                    self.view.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
+                else:
+                    self.view.viewport().unsetCursor()
+                self.view_changed.emit()
+                event.accept()
+                return True
         return super().eventFilter(watched, event)
 
     def resizeEvent(self, event) -> None:
