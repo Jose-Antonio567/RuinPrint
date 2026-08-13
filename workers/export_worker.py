@@ -5,6 +5,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, Signal, Slot
 
 from core.pipeline import ImagePipeline, PipelineSettings
+from core.exporter import save_png_with_metadata
 
 
 class ExportWorker(QObject):
@@ -23,7 +24,7 @@ class ExportWorker(QObject):
     def run(self) -> None:
         try:
             result = ImagePipeline().process(self.image, self.settings, spatial_scale=self.spatial_scale, progress_callback=self.progress.emit)
-            result.save(self.output_path, "PNG")
+            save_png_with_metadata(result, self.output_path, self.settings)
             self.progress.emit(100)
             self.finished.emit(self.output_path)
         except Exception as error:

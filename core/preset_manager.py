@@ -5,6 +5,8 @@ from pathlib import Path
 
 from PySide6.QtCore import QStandardPaths
 
+from core.processing_settings import is_valid_processing_settings
+
 
 class PresetManager:
     VERSION = 1
@@ -90,4 +92,8 @@ class PresetManager:
 
     @staticmethod
     def _valid(name: str, settings: object) -> bool:
-        return isinstance(name, str) and bool(name.strip()) and isinstance(settings, dict) and bool(settings)
+        return (
+            isinstance(name, str)
+            and bool(name.strip())
+            and is_valid_processing_settings(settings)
+        )

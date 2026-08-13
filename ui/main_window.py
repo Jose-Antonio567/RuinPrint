@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 from core.image_loader import (
     SUPPORTED_IMAGE_EXTENSIONS,
     create_preview,
-    load_image,
+    load_image_with_metadata,
 )
 from core.pipeline import ImagePipeline
 from core.pipeline import PipelineSettings
@@ -38,6 +38,7 @@ from core.preset_manager import PresetManager
 from core.edit_history import EditHistory
 from core.preview_render_controller import PreviewRenderController
 from core.image_document import ImageDocument
+from core.processing_settings import is_valid_processing_settings, settings_to_dict
 from workers.export_worker import ExportWorker
 from ui.controls import (
     BlackConsumptionControls,
@@ -153,12 +154,12 @@ class MainWindow(QMainWindow):
         self.image_list.setMaximumHeight(92)
         self.remove_image_button = QPushButton("Remover")
         self.remove_image_button.clicked.connect(self.remove_active_document)
-        image_batch_bar = QWidget()
-        image_batch_layout = QHBoxLayout(image_batch_bar)
-        image_batch_layout.setContentsMargins(0, 0, 0, 0)
-        image_batch_layout.addWidget(self.image_list_title)
-        image_batch_layout.addWidget(self.image_list, 1)
-        image_batch_layout.addWidget(self.remove_image_button)
+        image_list_bar = QWidget()
+        image_list_layout = QHBoxLayout(image_list_bar)
+        image_list_layout.setContentsMargins(0, 0, 0, 0)
+        image_list_layout.addWidget(self.image_list_title)
+        image_list_layout.addWidget(self.image_list, 1)
+        image_list_layout.addWidget(self.remove_image_button)
         QShortcut(QKeySequence("Ctrl+Z"), self, activated=self.undo)
         QShortcut(QKeySequence("Ctrl+Shift+Z"), self, activated=self.redo)
         QShortcut(QKeySequence("Ctrl+Y"), self, activated=self.redo)
@@ -188,6 +189,14 @@ class MainWindow(QMainWindow):
         self.rename_preset_button.clicked.connect(self.rename_preset)
         self.delete_preset_button.clicked.connect(self.delete_preset)
         settings_layout.addWidget(preset_box)
+        self.recover_image_settings_button = QPushButton("Carregar config. da imagem")
+        self.recover_image_settings_button.setEnabled(False)
+        self.recover_image_settings_button.clicked.connect(self.recover_active_image_settings)
+        self.recover_image_settings_label = QLabel("Configuração RuinPrint encontrada")
+        self.recover_image_settings_label.setObjectName("metadataNotice")
+        self.recover_image_settings_label.hide()
+        preset_layout.addWidget(self.recover_image_settings_button)
+        preset_layout.addWidget(self.recover_image_settings_label)
         copy_button = QPushButton("Copiar config."); paste_button = QPushButton("Colar config.")
         copy_button.clicked.connect(self.copy_settings); paste_button.clicked.connect(self.paste_settings)
         preset_layout.addWidget(copy_button); preset_layout.addWidget(paste_button)
@@ -241,7 +250,7 @@ class MainWindow(QMainWindow):
         self.workspace.setSizes((350, 350, 300))
 
         main_layout.addWidget(top_bar)
-        main_layout.addWidget(image_batch_bar)
+        main_layout.addWidget(image_list_bar)
         main_layout.addWidget(self.workspace, 1)
         self.export_progress = QProgressBar()
         self.export_progress.setRange(0, 100)
@@ -294,7 +303,7 @@ class MainWindow(QMainWindow):
                 self.image_list.setCurrentRow(index)
                 return
         try:
-            original_image = load_image(image_path)
+            original_image, ruinprint_settings = load_image_with_metadata(image_path)
             preview_image = create_preview(original_image)
         except (OSError, ValueError) as error:
             QMessageBox.critical(
@@ -304,7 +313,9 @@ class MainWindow(QMainWindow):
             )
             return
 
-        self.documents.append(ImageDocument(normalized_path, original_image, preview_image))
+        self.documents.append(
+            ImageDocument(normalized_path, original_image, preview_image, ruinprint_settings)
+        )
         self.image_list.addItem(Path(normalized_path).name)
         self._update_image_list_title()
         self.image_list.setCurrentRow(len(self.documents) - 1)
@@ -323,6 +334,7 @@ class MainWindow(QMainWindow):
         self.original_image = document.original_full
         self.preview_image = document.preview_original
         self.current_result_preview = document.preview_original.copy()
+        self._update_recover_image_settings_state(document.ruinprint_settings)
         self.preview_controller.invalidate()
         self.original_image_view.set_image(self.preview_image, reset_view=True)
         self.result_image_view.set_image(self.current_result_preview, reset_view=True)
@@ -341,6 +353,7 @@ class MainWindow(QMainWindow):
         self.active_document_index = -1
         self.current_image_path = None
         self.original_image = self.preview_image = self.current_result_preview = None
+        self._update_recover_image_settings_state(None)
         self.preview_controller.invalidate()
         self.original_image_view.clear_image()
         self.result_image_view.clear_image()
@@ -388,6 +401,41 @@ class MainWindow(QMainWindow):
             self.ink_controls.parameters(), self.focus_controls.parameters(),
             self.lens_controls.parameters(), self.degradation_controls.parameters(),
         )
+
+    def _update_recover_image_settings_state(self, settings: dict | None) -> None:
+        """Reflect metadata availability for the currently selected document only."""
+        available = is_valid_processing_settings(settings)
+        self.recover_image_settings_button.setEnabled(available)
+        self.recover_image_settings_label.setVisible(available)
+
+    def recover_active_image_settings(self) -> None:
+        """Apply the active PNG's embedded snapshot as one undoable editor action."""
+        if not (0 <= self.active_document_index < len(self.documents)):
+            return
+        settings = self.documents[self.active_document_index].ruinprint_settings
+        if not is_valid_processing_settings(settings):
+            self._update_recover_image_settings_state(None)
+            return
+
+        before = settings_to_dict(self.current_pipeline_settings())
+        self._applying_preset = True
+        self._history_suspended = True
+        controls = self.findChildren(QSlider) + self.findChildren(QComboBox)
+        for control in controls:
+            control.blockSignals(True)
+        try:
+            self._apply_preset_values(settings)
+            self.preset_combo.setCurrentText("Personalizado")
+        finally:
+            for control in controls:
+                control.blockSignals(False)
+            self._history_suspended = False
+            self._applying_preset = False
+
+        self._update_timer.stop()
+        self.update_result_preview()
+        self._record_history(before)
+        self.statusBar().showMessage("Configuração da imagem carregada", 5000)
 
     def _refresh_preset_combo(self, selected: str = "Personalizado") -> None:
         if not hasattr(self, "preset_combo"):
@@ -589,12 +637,12 @@ class MainWindow(QMainWindow):
         if self.current_result_preview is not None: self.result_image_view.set_image(self.current_result_preview)
 
     def copy_settings(self) -> None:
-        QApplication.clipboard().setText(json.dumps({"app":"RuinPrint","type":"processing-settings","version":1,"settings":asdict(self.current_pipeline_settings())}, indent=2))
+        QApplication.clipboard().setText(json.dumps({"app":"RuinPrint","type":"processing-settings","version":1,"settings":settings_to_dict(self.current_pipeline_settings())}, indent=2))
 
     def paste_settings(self) -> None:
         try:
             data = json.loads(QApplication.clipboard().text())
-            if data.get("app") != "RuinPrint" or data.get("type") != "processing-settings" or data.get("version") != 1 or not isinstance(data.get("settings"), dict): raise ValueError
+            if data.get("app") != "RuinPrint" or data.get("type") != "processing-settings" or data.get("version") != 1 or not is_valid_processing_settings(data.get("settings")): raise ValueError
         except (ValueError, json.JSONDecodeError):
             QMessageBox.warning(self, "Colar config.", "As configurações copiadas não são válidas para o RuinPrint."); return
         before = asdict(self.current_pipeline_settings()); self._apply_settings_once(data["settings"]); self._record_history(before)

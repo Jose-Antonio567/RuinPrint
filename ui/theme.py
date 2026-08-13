@@ -16,6 +16,7 @@ QPushButton:disabled { color: #777777; background: #242424; border-color: #30303
 #toneControls, #paletteControls, #ditherControls, #engravingControls, #blackConsumptionControls, #inkControls, #focusControls, #lensControls, #degradationControls { border: 1px solid #424242; border-radius: 5px; margin-top: 8px; padding: 8px; }
 #toneControls::title, #paletteControls::title, #ditherControls::title, #engravingControls::title, #blackConsumptionControls::title, #inkControls::title, #focusControls::title, #lensControls::title, #degradationControls::title { subcontrol-origin: margin; left: 9px; padding: 0 4px; color: #cfcfcf; font-weight: 600; }
 #controlValue { color: #bcbcbc; }
+#metadataNotice { color: #aaa38d; font-size: 11px; }
 QComboBox { background: #303030; border: 1px solid #484848; border-radius: 4px; padding: 5px 8px; }
 QComboBox:hover { border-color: #696153; }
 QComboBox QAbstractItemView { background: #292929; selection-background-color: #4a453a; }
