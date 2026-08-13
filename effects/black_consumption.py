@@ -68,7 +68,7 @@ def _consume_dark_masses(
 ) -> np.ndarray:
     strength = float(np.clip(amount, 0, 100)) / 100.0
     safe_reach = int(np.clip(reach, 1, 8))
-    safe_scale = int(np.clip(dither_scale, 1, 8))
+    safe_scale = int(np.clip(dither_scale, 1, 32))
     radius = max(1, min(5, int(round(safe_reach * (0.45 + strength * 0.55) / np.sqrt(safe_scale)))))
     kernel = np.ones((radius * 2 + 1, radius * 2 + 1), dtype=np.uint8)
     expanded_ink = cv2.dilate(ink_amount * active_pixels, kernel)
@@ -85,7 +85,7 @@ def _swallow_light_details(
     active_pixels: np.ndarray,
 ) -> np.ndarray:
     strength = float(np.clip(detail_swallow, 0, 100)) / 100.0
-    safe_scale = int(np.clip(dither_scale, 1, 8))
+    safe_scale = int(np.clip(dither_scale, 1, 32))
     radius = max(1, min(3, int(round((1.0 + strength * 2.5) / np.sqrt(safe_scale)))))
     kernel = np.ones((radius * 2 + 1, radius * 2 + 1), dtype=np.uint8)
     dark_regions = ((ink_amount > 0.58) & active_pixels).astype(np.uint8)

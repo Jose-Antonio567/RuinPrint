@@ -232,7 +232,7 @@ class DitherControls(QGroupBox):
             form_layout, "Strength", 0, 100, 70
         )
         self.scale_slider, self.scale_value = self._add_slider(
-            form_layout, "Scale", 1, 8, 1
+            form_layout, "Scale", 1, 32, 1
         )
         self.pattern_distortion_slider, self.pattern_distortion_value = self._add_slider(
             form_layout, "Pattern Distortion", 0, 100, 0

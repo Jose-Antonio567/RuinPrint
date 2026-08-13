@@ -98,7 +98,7 @@ def _image_luminance(image: Image.Image) -> np.ndarray:
 
 
 def _scaled_luminance(luminance: np.ndarray, scale: int) -> np.ndarray:
-    safe_scale = int(np.clip(scale, 1, 8))
+    safe_scale = int(np.clip(scale, 1, 32))
     if safe_scale == 1:
         return luminance.copy()
 

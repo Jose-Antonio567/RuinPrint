@@ -118,7 +118,7 @@ def _apply_dither_spread(
     scale: int,
 ) -> np.ndarray:
     strength = float(np.clip(value, 0, 100)) / 100.0
-    safe_scale = int(np.clip(scale, 1, 8))
+    safe_scale = int(np.clip(scale, 1, 32))
     radius = max(1, int(round(1 + strength * 2 / safe_scale)))
     ink_amount = _ink_amount_from_rgb(rgb, color_luminances)
     expanded_ink = cv2.dilate(ink_amount, np.ones((radius * 2 + 1, radius * 2 + 1), np.uint8))
