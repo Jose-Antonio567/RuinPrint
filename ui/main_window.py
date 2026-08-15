@@ -443,15 +443,29 @@ class MainWindow(QMainWindow):
         self.preset_combo.blockSignals(True)
         self.preset_combo.clear()
         self.preset_combo.addItem("Personalizado")
+        self._add_preset_header("FACTORY")
         self.preset_combo.addItems([f"Factory: {name}" for name in self.preset_manager.factory_presets])
+        self._add_preset_header("MY PRESETS")
         self.preset_combo.addItems(self.preset_manager.names())
-        factory_label = f"Factory: {selected}"
-        self.preset_combo.setCurrentText(factory_label if selected in self.preset_manager.factory_presets else (selected if selected in self.preset_manager.presets else "Personalizado"))
+        label = (
+            f"Factory: {selected}" if selected in self.preset_manager.factory_presets
+            else selected if selected in self.preset_manager.presets
+            else "Personalizado"
+        )
+        self.preset_combo.setCurrentText(label)
         self.preset_combo.blockSignals(False)
+
+    def _add_preset_header(self, title: str) -> None:
+        self.preset_combo.addItem(title)
+        item = self.preset_combo.model().item(self.preset_combo.count() - 1)
+        if item is not None:
+            item.setEnabled(False)
 
     def _preset_name(self) -> str | None:
         name = self.preset_combo.currentText()
-        return None if name == "Personalizado" or name.startswith("Factory: ") else name
+        if name == "Personalizado" or name in {"FACTORY", "MY PRESETS"}:
+            return None
+        return name.removeprefix("Factory: ")
 
     def save_preset_as(self) -> None:
         name, accepted = QInputDialog.getText(self, "Salvar preset", "Nome do preset:")
@@ -492,14 +506,18 @@ class MainWindow(QMainWindow):
             self._refresh_preset_combo()
 
     def load_selected_preset(self, name: str) -> None:
-        preset_name = name.removeprefix("Factory: ")
-        factory = self.preset_manager.is_factory(preset_name)
-        self.update_preset_button.setEnabled(not factory and name != "Personalizado")
-        self.rename_preset_button.setEnabled(not factory and name != "Personalizado")
-        self.delete_preset_button.setEnabled(not factory and name != "Personalizado")
+        preset_name = self._preset_name()
+        readonly = preset_name is not None and self.preset_manager.is_factory(preset_name)
+        editable = preset_name is not None and not readonly
+        self.update_preset_button.setEnabled(editable)
+        self.rename_preset_button.setEnabled(editable)
+        self.delete_preset_button.setEnabled(editable)
+        if preset_name is None:
+            return
         values = self.preset_manager.get(preset_name)
         if values is None:
             return
+        before = settings_to_dict(self.current_pipeline_settings())
         self._applying_preset = True
         controls = self.findChildren(QSlider) + self.findChildren(QComboBox)
         for control in controls:
@@ -510,7 +528,9 @@ class MainWindow(QMainWindow):
             for control in controls:
                 control.blockSignals(False)
             self._applying_preset = False
+        self._update_timer.stop()
         self.update_result_preview()
+        self._record_history(before)
 
     def _apply_preset_values(self, values: dict) -> None:
         groups = {
