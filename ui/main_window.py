@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 from PIL import Image
-from PySide6.QtCore import QSettings, QThread, QTimer, QUrl, Qt
+from PySide6.QtCore import QSignalBlocker, QThread, QTimer, QUrl, Qt
 from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDropEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -39,6 +39,7 @@ from core.edit_history import EditHistory
 from core.preview_render_controller import PreviewRenderController
 from core.image_document import ImageDocument
 from core.processing_settings import is_valid_processing_settings, settings_to_dict
+from core.app_paths import get_settings
 from workers.export_worker import ExportWorker
 from ui.controls import (
     BlackConsumptionControls,
@@ -68,12 +69,13 @@ class MainWindow(QMainWindow):
         self.current_image_path: str | None = None
         self.documents: list[ImageDocument] = []
         self.active_document_index: int = -1
+        self.active_document: ImageDocument | None = None
         self.original_image: Image.Image | None = None
         self.preview_image: Image.Image | None = None
         self.current_result_preview: Image.Image | None = None
         self.pipeline = ImagePipeline()
         self.preset_manager = PresetManager()
-        self.settings = QSettings("RuinPrint", "RuinPrint")
+        self.settings = get_settings()
         self._applying_preset = False
         self._syncing_views = False
         self.history = EditHistory()
@@ -264,6 +266,7 @@ class MainWindow(QMainWindow):
             slider.sliderPressed.connect(lambda: setattr(self, "_slider_before", asdict(self.current_pipeline_settings())))
             slider.sliderReleased.connect(self._commit_slider_edit)
         self._update_history_buttons()
+        self._update_document_actions()
 
     @staticmethod
     def _add_toolbar_group_label(layout: QHBoxLayout, label: str) -> None:
@@ -330,11 +333,13 @@ class MainWindow(QMainWindow):
             return
         document = self.documents[row]
         self.active_document_index = row
+        self.active_document = document
         self.current_image_path = document.path
         self.original_image = document.original_full
         self.preview_image = document.preview_original
         self.current_result_preview = document.preview_original.copy()
         self._update_recover_image_settings_state(document.ruinprint_settings)
+        self._update_document_actions()
         self.preview_controller.invalidate()
         self.original_image_view.set_image(self.preview_image, reset_view=True)
         self.result_image_view.set_image(self.current_result_preview, reset_view=True)
@@ -342,21 +347,56 @@ class MainWindow(QMainWindow):
 
     def remove_active_document(self) -> None:
         row = self.image_list.currentRow()
+        self.remove_document(row)
+
+    def remove_document(self, row: int) -> None:
+        """Remove one document while preserving the identity of the active document."""
         if row < 0 or row >= len(self.documents):
             return
-        self.documents.pop(row)
-        self.image_list.takeItem(row)
+        active_before = self.active_document
+        removed_document = self.documents[row]
+
+        with QSignalBlocker(self.image_list):
+            self.documents.pop(row)
+            self.image_list.takeItem(row)
+            self._update_image_list_title()
+
+            if not self.documents:
+                self.image_list.setCurrentRow(-1)
+                self._clear_active_document()
+                return
+
+            if active_before is not removed_document:
+                for index, document in enumerate(self.documents):
+                    if document is active_before:
+                        self.active_document_index = index
+                        self.image_list.setCurrentRow(index)
+                        self._update_document_actions()
+                        return
+
+            next_row = min(row, len(self.documents) - 1)
+            self.image_list.setCurrentRow(next_row)
+
+        self.set_active_document(next_row)
+
+    def _clear_active_document(self) -> None:
+        """Enter the empty editor state after the final document is removed."""
         self._update_image_list_title()
-        if self.documents:
-            self.image_list.setCurrentRow(min(row, len(self.documents) - 1))
-            return
         self.active_document_index = -1
+        self.active_document = None
         self.current_image_path = None
         self.original_image = self.preview_image = self.current_result_preview = None
+        self._before_active = False
         self._update_recover_image_settings_state(None)
+        self._update_document_actions()
         self.preview_controller.invalidate()
         self.original_image_view.clear_image()
         self.result_image_view.clear_image()
+
+    def _update_document_actions(self) -> None:
+        has_documents = bool(self.documents)
+        self.export_button.setEnabled(has_documents and self._export_thread is None)
+        self.remove_image_button.setEnabled(has_documents)
 
     def update_result_preview(self) -> None:
         """Rebuild the result from the untouched original preview and current controls."""
@@ -601,10 +641,10 @@ class MainWindow(QMainWindow):
 
     def _finish_export(self) -> None:
         self.import_button.setEnabled(True)
-        self.export_button.setEnabled(True)
         self.export_progress.hide()
         self._export_thread = None
         self._export_worker = None
+        self._update_document_actions()
 
     def schedule_result_update(self) -> None:
         """Debounce preview recalculation while controls are being adjusted."""

@@ -3,8 +3,7 @@
 import json
 from pathlib import Path
 
-from PySide6.QtCore import QStandardPaths
-
+from core.app_paths import legacy_user_presets_path, resource_path, user_presets_path
 from core.processing_settings import is_valid_processing_settings
 
 
@@ -12,8 +11,7 @@ class PresetManager:
     VERSION = 1
 
     def __init__(self) -> None:
-        location = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppConfigLocation)
-        self.path = Path(location) / "user_presets.json"
+        self.path = user_presets_path()
         self.presets: dict[str, dict] = {}
         self.factory_presets: dict[str, dict] = {}
         self.load_error = False
@@ -22,6 +20,9 @@ class PresetManager:
 
     def load(self) -> None:
         if not self.path.exists():
+            self._migrate_legacy_presets()
+        if not self.path.exists():
+            self._write()
             return
         try:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
@@ -32,6 +33,27 @@ class PresetManager:
         except (OSError, ValueError, json.JSONDecodeError):
             self.load_error = True
             self.presets = {}
+
+    def _migrate_legacy_presets(self) -> None:
+        """Copy a valid legacy file once, without changing its original copy."""
+        legacy_path = legacy_user_presets_path()
+        if not legacy_path.exists() or legacy_path.resolve() == self.path.resolve():
+            return
+        try:
+            payload = json.loads(legacy_path.read_text(encoding="utf-8"))
+            presets = payload.get("presets", {})
+            if payload.get("version") != self.VERSION or not isinstance(presets, dict):
+                raise ValueError("Formato de presets inválido.")
+            migrated = {name: values for name, values in presets.items() if self._valid(name, values)}
+            if len(migrated) != len(presets):
+                return
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_text(
+                json.dumps({"version": self.VERSION, "presets": migrated}, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except (OSError, ValueError, json.JSONDecodeError):
+            return
 
     def names(self) -> list[str]:
         return sorted(self.presets, key=str.casefold)
@@ -44,7 +66,7 @@ class PresetManager:
         return name in self.factory_presets
 
     def _load_factory(self) -> None:
-        factory_path = Path(__file__).parents[1] / "presets" / "factory_presets.json"
+        factory_path = resource_path("presets/factory_presets.json")
         try:
             overrides = json.loads(factory_path.read_text(encoding="utf-8")).get("presets", {})
             defaults = self._defaults()
