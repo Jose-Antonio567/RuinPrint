@@ -40,6 +40,7 @@ from core.preview_render_controller import PreviewRenderController
 from core.image_document import ImageDocument
 from core.processing_settings import is_valid_processing_settings, settings_to_dict
 from core.app_paths import get_settings
+from core.app_info import APP_NAME
 from workers.export_worker import ExportWorker
 from ui.controls import (
     BlackConsumptionControls,
@@ -61,7 +62,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("RuinPrint")
+        self.setWindowTitle(APP_NAME)
         self.resize(1200, 750)
         self.setMinimumSize(800, 500)
         self.setAcceptDrops(True)
