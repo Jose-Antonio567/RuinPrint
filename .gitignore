@@ -8,6 +8,7 @@ build/
 dist/
 *.spec
 !packaging/RuinPrint.spec
+release/
 
 # Portable, per-user runtime data.
 data/
