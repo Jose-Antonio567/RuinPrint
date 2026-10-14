@@ -19,6 +19,8 @@ def apply_degradation(
     exposure_drift: int = 0,
     vignette: int = 0,
     image_fade: int = 0,
+    aged_ivory_hue: int = 0,
+    aged_ivory_influence: int = 0,
 ) -> Image.Image:
     """Apply the ordered final degradation effects while preserving alpha exactly.
 
@@ -33,7 +35,7 @@ def apply_degradation(
     source_pixels = np.asarray(rgba_image, dtype=np.uint8)
     rgb = source_pixels[..., :3].astype(np.float32) / 255.0
     active_pixels = source_pixels[..., 3] > 0
-    ink_color, paper_color = _palette_extremes(palette_name, tones)
+    ink_color, paper_color = _palette_extremes(palette_name, tones, aged_ivory_hue, aged_ivory_influence)
 
     if exposure_drift > 0:
         rgb = _apply_exposure_drift(rgb, ink_color, paper_color, exposure_drift, active_pixels)
@@ -57,8 +59,8 @@ def apply_degradation(
     return Image.fromarray(output_pixels, "RGBA")
 
 
-def _palette_extremes(palette_name: str, tones: int) -> tuple[np.ndarray, np.ndarray]:
-    colors = get_palette(palette_name, tones)
+def _palette_extremes(palette_name: str, tones: int, hue: int = 0, influence: int = 0) -> tuple[np.ndarray, np.ndarray]:
+    colors = get_palette(palette_name, tones, hue, influence)
     color_array = np.asarray(colors, dtype=np.float32) / 255.0
     luminances = palette_luminance(colors)
     return color_array[np.argmin(luminances)], color_array[np.argmax(luminances)]

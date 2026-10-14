@@ -1,5 +1,6 @@
 """Explicit reduced palettes and non-destructive RGBA quantization."""
 
+import cv2
 import numpy as np
 from PIL import Image
 
@@ -59,9 +60,22 @@ _MASTER_PALETTES = {
 _TONE_INDEXES = {2:(0,5), 3:(0,3,5), 4:(0,2,4,5), 5:(0,1,3,4,5), 6:(0,1,2,3,4,5)}
 PALETTES.update({name: {tones: tuple(master[index] for index in indexes) for tones, indexes in _TONE_INDEXES.items()} for name, master in _MASTER_PALETTES.items()})
 
+LEGACY_AGED_IVORY_VARIANTS = frozenset(name for name in PALETTES if name.startswith("Aged Ivory "))
+VISIBLE_PALETTES = tuple(name for name in PALETTES if name not in LEGACY_AGED_IVORY_VARIANTS)
 
-def get_palette(palette_name: str, tones: int) -> tuple[tuple[int, int, int], ...]:
+
+def get_palette(
+    palette_name: str,
+    tones: int,
+    aged_ivory_hue: int = 0,
+    aged_ivory_influence: int = 0,
+) -> tuple[tuple[int, int, int], ...]:
     """Return the explicit RGB colors for a palette selection."""
+    if palette_name == "Aged Ivory":
+        colors = PALETTES[palette_name][tones]
+        if int(aged_ivory_influence) <= 0:
+            return colors
+        return _tint_aged_ivory(colors, aged_ivory_hue, aged_ivory_influence)
     try:
         return PALETTES[palette_name][tones]
     except KeyError as error:
@@ -86,9 +100,15 @@ def nearest_palette_indexes(
     return np.argmin(distances, axis=-1)
 
 
-def apply_palette(image: Image.Image, palette_name: str, tones: int) -> Image.Image:
+def apply_palette(
+    image: Image.Image,
+    palette_name: str,
+    tones: int,
+    aged_ivory_hue: int = 0,
+    aged_ivory_influence: int = 0,
+) -> Image.Image:
     """Map an RGBA image to an explicit palette while preserving alpha exactly."""
-    colors = get_palette(palette_name, tones)
+    colors = get_palette(palette_name, tones, aged_ivory_hue, aged_ivory_influence)
 
     rgba_image = image.convert("RGBA")
     pixels = np.asarray(rgba_image, dtype=np.uint8)
@@ -102,3 +122,27 @@ def apply_palette(image: Image.Image, palette_name: str, tones: int) -> Image.Im
     output_pixels[..., :3] = color_array[color_indexes]
     output_pixels[..., 3] = pixels[..., 3]
     return Image.fromarray(output_pixels, "RGBA")
+
+
+def _tint_aged_ivory(
+    colors: tuple[tuple[int, int, int], ...], hue: int, influence: int
+) -> tuple[tuple[int, int, int], ...]:
+    """Apply a deliberately low-chroma Lab tint while retaining Ivory lightness."""
+    hue = int(hue) % 360
+    influence = int(np.clip(influence, 0, 100))
+    if influence == 0:
+        return colors
+
+    source = np.asarray(colors, dtype=np.uint8).reshape(1, -1, 3)
+    lab = cv2.cvtColor(source, cv2.COLOR_RGB2LAB).astype(np.float32)
+    hue_pixel = np.array([[[hue / 2, 255, 255]]], dtype=np.uint8)
+    hue_lab = cv2.cvtColor(cv2.cvtColor(hue_pixel, cv2.COLOR_HSV2RGB), cv2.COLOR_RGB2LAB)[0, 0].astype(np.float32)
+    direction = hue_lab[1:] - 128.0
+    direction /= max(float(np.linalg.norm(direction)), 1.0)
+
+    amount = influence / 100.0
+    base_chroma = lab[..., 1:] - 128.0
+    target_chroma = 5.0 + 12.0 * amount
+    lab[..., 1:] = 128.0 + base_chroma * (1.0 - amount * 0.50) + direction * target_chroma * amount
+    tinted = cv2.cvtColor(np.clip(np.round(lab), 0, 255).astype(np.uint8), cv2.COLOR_LAB2RGB)[0]
+    return tuple(tuple(int(channel) for channel in color) for color in tinted)

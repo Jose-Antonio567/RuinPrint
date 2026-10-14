@@ -35,6 +35,8 @@ def apply_lens(
     lens_smear: int = 0,
     smear_angle: int = 0,
     soft_bleed: int = 0,
+    aged_ivory_hue: int = 0,
+    aged_ivory_influence: int = 0,
 ) -> Image.Image:
     """Apply directional smear and spatial highlight bleed without changing alpha."""
     if lens_smear <= 0 and soft_bleed <= 0:
@@ -53,7 +55,7 @@ def apply_lens(
 
     if soft_bleed > 0:
         rgb = _apply_soft_bleed(
-            rgb, alpha, palette_name, tones, soft_bleed, active_pixels
+            rgb, alpha, palette_name, tones, soft_bleed, active_pixels, aged_ivory_hue, aged_ivory_influence
         )
     return _compose_rgba(rgb, source_pixels)
 
@@ -88,18 +90,20 @@ def _apply_soft_bleed(
     tones: int,
     value: int,
     active_pixels: np.ndarray,
+    hue: int,
+    influence: int,
 ) -> np.ndarray:
     strength = float(np.clip(value, 0, 100)) / 100.0
     luminance = 0.2126 * rgb[..., 0] + 0.7152 * rgb[..., 1] + 0.0722 * rgb[..., 2]
     highlights = np.clip((luminance - 0.72) / 0.28, 0.0, 1.0) * alpha
     sigma = 0.5 + strength * 5.0
     blurred_highlights = cv2.GaussianBlur(highlights, (0, 0), sigma)
-    paper_color = _paper_color(palette_name, tones)
+    paper_color = _paper_color(palette_name, tones, hue, influence)
     blend = np.clip(blurred_highlights * strength * 0.58, 0.0, 1.0) * active_pixels
     return rgb * (1.0 - blend[..., np.newaxis]) + paper_color * blend[..., np.newaxis]
 
 
-def _paper_color(palette_name: str, tones: int) -> np.ndarray:
-    colors = get_palette(palette_name, tones)
+def _paper_color(palette_name: str, tones: int, hue: int = 0, influence: int = 0) -> np.ndarray:
+    colors = get_palette(palette_name, tones, hue, influence)
     color_array = np.asarray(colors, dtype=np.float32) / 255.0
     return color_array[np.argmax(palette_luminance(colors))]

@@ -1,6 +1,7 @@
 """Reusable editor controls."""
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QPointF, Qt, Signal
+from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPen
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -52,7 +53,65 @@ from core.pipeline import (
     PaletteParameters,
     ToneParameters,
 )
-from effects.palette import PALETTES, get_palette
+from effects.palette import VISIBLE_PALETTES, get_palette
+
+
+class HueSpectrum(QWidget):
+    """Compact horizontal hue picker painted without external image assets."""
+
+    hue_changed = Signal(int)
+    interaction_started = Signal()
+    interaction_finished = Signal()
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._hue = 0
+        self.setMinimumHeight(20)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def hue(self) -> int:
+        return self._hue
+
+    def set_hue(self, hue: int) -> None:
+        hue = int(hue) % 360
+        if hue != self._hue:
+            self._hue = hue
+            self.update()
+            self.hue_changed.emit(hue)
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.interaction_started.emit()
+            self._set_hue_from_position(event.position().x())
+            event.accept()
+
+    def mouseMoveEvent(self, event) -> None:
+        if event.buttons() & Qt.MouseButton.LeftButton:
+            self._set_hue_from_position(event.position().x())
+            event.accept()
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._set_hue_from_position(event.position().x())
+            self.interaction_finished.emit()
+            event.accept()
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        rect = self.rect().adjusted(1, 3, -1, -3)
+        gradient = QLinearGradient(QPointF(rect.left(), 0), QPointF(rect.right(), 0))
+        for position, hue in ((0.0, 0), (1 / 6, 60), (2 / 6, 120), (3 / 6, 180), (4 / 6, 240), (5 / 6, 300), (1.0, 360)):
+            gradient.setColorAt(position, QColor.fromHsv(hue % 360, 210, 225))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(gradient)
+        painter.drawRoundedRect(rect, 3, 3)
+        marker_x = rect.left() + rect.width() * self._hue / 359
+        painter.setPen(QPen(QColor("#f2eee2"), 2))
+        painter.drawLine(int(marker_x), rect.top() - 2, int(marker_x), rect.bottom() + 2)
+
+    def _set_hue_from_position(self, x: float) -> None:
+        width = max(self.width() - 2, 1)
+        self.set_hue(round(max(0.0, min(width, x - 1)) / width * 359))
 
 
 class ToneControls(QGroupBox):
@@ -158,7 +217,7 @@ class PaletteControls(QGroupBox):
         form_layout.setSpacing(12)
 
         self.palette_combo = QComboBox()
-        self.palette_combo.addItems(tuple(PALETTES))
+        self.palette_combo.addItems(VISIBLE_PALETTES)
         self.palette_combo.setCurrentText("Aged Ivory")
         form_layout.addRow("Palette", self.palette_combo)
 
@@ -166,6 +225,29 @@ class PaletteControls(QGroupBox):
         self.tones_combo.addItems(("2", "3", "4", "5", "6"))
         self.tones_combo.setCurrentText("4")
         form_layout.addRow("Tones", self.tones_combo)
+
+        self.hue_row = QWidget()
+        hue_layout = QHBoxLayout(self.hue_row)
+        hue_layout.setContentsMargins(0, 0, 0, 0)
+        self.hue_spectrum = HueSpectrum()
+        self.hue_value = QLabel("0° Red")
+        self.hue_value.setObjectName("controlValue")
+        self.hue_value.setMinimumWidth(68)
+        hue_layout.addWidget(self.hue_spectrum, 1)
+        hue_layout.addWidget(self.hue_value)
+        form_layout.addRow("Base Color", self.hue_row)
+
+        self.influence_row = QWidget()
+        influence_layout = QHBoxLayout(self.influence_row)
+        influence_layout.setContentsMargins(0, 0, 0, 0)
+        self.influence_slider = QSlider(Qt.Orientation.Horizontal)
+        self.influence_slider.setRange(0, 100)
+        self.influence_value = QLabel("0")
+        self.influence_value.setObjectName("controlValue")
+        self.influence_value.setMinimumWidth(40)
+        influence_layout.addWidget(self.influence_slider, 1)
+        influence_layout.addWidget(self.influence_value)
+        form_layout.addRow("Color Influence", self.influence_row)
         self.swatches = QLabel()
         self.swatches.setFixedHeight(22)
         form_layout.addRow("", self.swatches)
@@ -174,10 +256,18 @@ class PaletteControls(QGroupBox):
         self.tones_combo.currentTextChanged.connect(self.parameters_changed)
         self.palette_combo.currentTextChanged.connect(self._update_swatches)
         self.tones_combo.currentTextChanged.connect(self._update_swatches)
+        self.hue_spectrum.hue_changed.connect(self._update_hue_value)
+        self.hue_spectrum.hue_changed.connect(self.parameters_changed)
+        self.hue_spectrum.hue_changed.connect(self._update_swatches)
+        self.influence_slider.valueChanged.connect(self._update_influence_value)
+        self.influence_slider.valueChanged.connect(self.parameters_changed)
+        self.influence_slider.valueChanged.connect(self._update_swatches)
+        self.palette_combo.currentTextChanged.connect(self._update_aged_ivory_visibility)
+        self._update_aged_ivory_visibility()
         self._update_swatches()
 
     def _update_swatches(self) -> None:
-        colors = get_palette(self.palette_combo.currentText(), int(self.tones_combo.currentText()))
+        colors = get_palette(self.palette_combo.currentText(), int(self.tones_combo.currentText()), self.hue_spectrum.hue(), self.influence_slider.value())
         stops = ", ".join(f"rgb({r},{g},{b}) {index * 100 / len(colors):.1f}%, rgb({r},{g},{b}) {(index + 1) * 100 / len(colors):.1f}%" for index, (r,g,b) in enumerate(colors))
         self.swatches.setStyleSheet(f"border: 1px solid #444; border-radius: 3px; background: qlineargradient(x1:0,y1:0,x2:1,y2:0, {stops});")
 
@@ -186,6 +276,8 @@ class PaletteControls(QGroupBox):
         return PaletteParameters(
             name=self.palette_combo.currentText(),
             tones=int(self.tones_combo.currentText()),
+            aged_ivory_hue=self.hue_spectrum.hue(),
+            aged_ivory_influence=self.influence_slider.value(),
         )
 
     def reset(self) -> None:
@@ -194,10 +286,24 @@ class PaletteControls(QGroupBox):
         self.tones_combo.blockSignals(True)
         self.palette_combo.setCurrentText("Aged Ivory")
         self.tones_combo.setCurrentText("4")
+        self.hue_spectrum.set_hue(0)
+        self.influence_slider.setValue(0)
         self.palette_combo.blockSignals(False)
         self.tones_combo.blockSignals(False)
         self._update_swatches()
         self.parameters_changed.emit()
+
+    def _update_aged_ivory_visibility(self) -> None:
+        visible = self.palette_combo.currentText() == "Aged Ivory"
+        self.hue_row.setVisible(visible)
+        self.influence_row.setVisible(visible)
+
+    def _update_hue_value(self, hue: int) -> None:
+        names = ((15, "Red"), (45, "Orange"), (75, "Yellow"), (150, "Green"), (210, "Cyan"), (260, "Blue"), (305, "Violet"), (345, "Rose"), (360, "Red"))
+        self.hue_value.setText(f"{hue}° {next(name for limit, name in names if hue < limit)}")
+
+    def _update_influence_value(self, value: int) -> None:
+        self.influence_value.setText(str(value))
 
 
 class DitherControls(QGroupBox):

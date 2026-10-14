@@ -16,6 +16,8 @@ def apply_engraving(
     detail: int = 35,
     thickness: int = 1,
     direction: str = "Natural",
+    aged_ivory_hue: int = 0,
+    aged_ivory_influence: int = 0,
 ) -> Image.Image:
     """Reinforce selected structural edges toward the active palette ink color."""
     if strength <= 0:
@@ -28,7 +30,7 @@ def apply_engraving(
     luminance = 0.2126 * rgb[..., 0] + 0.7152 * rgb[..., 1] + 0.0722 * rgb[..., 2]
 
     edge_mask = _edge_mask(luminance, active_pixels, detail, thickness, direction)
-    ink_color = _ink_color(palette_name, tones)
+    ink_color = _ink_color(palette_name, tones, aged_ivory_hue, aged_ivory_influence)
     blend = (edge_mask * (np.clip(strength, 0, 100) / 100.0))[..., np.newaxis]
     output_rgb = rgb * (1.0 - blend) + ink_color * blend
 
@@ -89,7 +91,7 @@ def _direction_weight(
     return np.abs(np.cos(difference)) ** 4
 
 
-def _ink_color(palette_name: str, tones: int) -> np.ndarray:
-    colors = get_palette(palette_name, tones)
+def _ink_color(palette_name: str, tones: int, hue: int = 0, influence: int = 0) -> np.ndarray:
+    colors = get_palette(palette_name, tones, hue, influence)
     color_array = np.asarray(colors, dtype=np.float32) / 255.0
     return color_array[np.argmin(palette_luminance(colors))]

@@ -34,20 +34,22 @@ def apply_dither(
     strength: int = 70,
     scale: int = 1,
     pattern_distortion: int = 0,
+    aged_ivory_hue: int = 0,
+    aged_ivory_influence: int = 0,
 ) -> Image.Image:
     """Return a newly dithered RGBA image with its original alpha channel intact."""
     if algorithm == "Off":
-        return apply_palette(image, palette_name, tones)
+        return apply_palette(image, palette_name, tones, aged_ivory_hue, aged_ivory_influence)
 
     if algorithm not in {"Bayer", "Clustered Dot", "Cross Dither", "Broken Dither", "Floyd-Steinberg", "Atkinson", "Noise"}:
         raise ValueError("Algoritmo de dithering inválido.")
 
     normalized_strength = float(np.clip(strength, 0, 100)) / 100.0
     if normalized_strength == 0.0:
-        return apply_palette(image, palette_name, tones)
+        return apply_palette(image, palette_name, tones, aged_ivory_hue, aged_ivory_influence)
 
     rgba_image = image.convert("RGBA")
-    colors = get_palette(palette_name, tones)
+    colors = get_palette(palette_name, tones, aged_ivory_hue, aged_ivory_influence)
     color_array = np.asarray(colors, dtype=np.uint8)
     color_luminances = palette_luminance(colors)
     luminance = _image_luminance(rgba_image)

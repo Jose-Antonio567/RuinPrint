@@ -61,6 +61,8 @@ def apply_dither_destruction(
     dither_loss: int = 0,
     dither_spread: int = 0,
     scale: int = 1,
+    aged_ivory_hue: int = 0,
+    aged_ivory_influence: int = 0,
 ) -> Image.Image:
     """Apply Dither Loss then Dither Spread without changing alpha or geometry."""
     if dither_loss <= 0 and dither_spread <= 0:
@@ -70,7 +72,7 @@ def apply_dither_destruction(
     source_pixels = np.asarray(rgba_image, dtype=np.uint8)
     rgb = source_pixels[..., :3].copy()
     active_pixels = source_pixels[..., 3] > 0
-    colors = get_palette(palette_name, tones)
+    colors = get_palette(palette_name, tones, aged_ivory_hue, aged_ivory_influence)
     color_array = np.asarray(colors, dtype=np.uint8)
     color_luminances = palette_luminance(colors)
 

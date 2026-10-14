@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from core.app_paths import legacy_user_presets_path, resource_path, user_presets_path
-from core.processing_settings import is_valid_processing_settings
+from core.processing_settings import is_valid_processing_settings, migrate_processing_settings
 
 
 class PresetManager:
@@ -60,7 +60,7 @@ class PresetManager:
 
     def get(self, name: str) -> dict | None:
         value = self.factory_presets.get(name) or self.presets.get(name)
-        return value.copy() if value else None
+        return migrate_processing_settings(value) if value else None
 
     def is_factory(self, name: str) -> bool:
         return name in self.factory_presets
@@ -80,7 +80,7 @@ class PresetManager:
 
     @staticmethod
     def _defaults() -> dict:
-        return {"tone":{"contrast":0,"black_crush":0,"highlight_burn":0,"gamma":1.0},"palette":{"name":"Aged Ivory","tones":4},"dither":{"mode":"Bayer","strength":70,"scale":1},"dither_destruction":{"pattern_distortion":0,"dither_loss":0,"dither_spread":0},"engraving":{"strength":0,"detail":35,"thickness":1,"direction":"Natural"},"black_consumption":{"amount":0,"reach":2,"detail_swallow":0},"ink":{"ink_bleed":0,"ink_loss":0,"paper_grain":0,"speckles":0,"print_misalignment":0},"focus":{"shape":"Horizontal","position_x":50,"position_y":50,"width":40,"softness":40,"angle":0,"blur":0},"lens":{"uneven_focus":0,"lens_smear":0,"smear_angle":0,"soft_bleed":0},"degradation":{"film_grain":0,"dust":0,"scratches":0,"edge_decay":0,"exposure_drift":0,"vignette":0,"image_fade":0}}
+        return {"tone":{"contrast":0,"black_crush":0,"highlight_burn":0,"gamma":1.0},"palette":{"name":"Aged Ivory","tones":4,"aged_ivory_hue":0,"aged_ivory_influence":0},"dither":{"mode":"Bayer","strength":70,"scale":1},"dither_destruction":{"pattern_distortion":0,"dither_loss":0,"dither_spread":0},"engraving":{"strength":0,"detail":35,"thickness":1,"direction":"Natural"},"black_consumption":{"amount":0,"reach":2,"detail_swallow":0},"ink":{"ink_bleed":0,"ink_loss":0,"paper_grain":0,"speckles":0,"print_misalignment":0},"focus":{"shape":"Horizontal","position_x":50,"position_y":50,"width":40,"softness":40,"angle":0,"blur":0},"lens":{"uneven_focus":0,"lens_smear":0,"smear_angle":0,"soft_bleed":0},"degradation":{"film_grain":0,"dust":0,"scratches":0,"edge_decay":0,"exposure_drift":0,"vignette":0,"image_fade":0}}
 
     def save(self, name: str, settings: dict) -> None:
         name = self._clean_name(name)

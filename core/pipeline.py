@@ -32,6 +32,8 @@ class PaletteParameters:
 
     name: str = "Aged Ivory"
     tones: int = 4
+    aged_ivory_hue: int = 0
+    aged_ivory_influence: int = 0
 
 
 @dataclass(frozen=True)
@@ -191,6 +193,8 @@ class ImagePipeline:
             dither.strength,
             max(1, int(round(dither.scale * spatial_scale))),
             destruction.pattern_distortion,
+            palette.aged_ivory_hue,
+            palette.aged_ivory_influence,
         )
         report(30)
         destruction_result = apply_dither_destruction(
@@ -200,6 +204,8 @@ class ImagePipeline:
             dither_loss=destruction.dither_loss,
             dither_spread=destruction.dither_spread,
             scale=max(1, int(round(dither.scale * spatial_scale))),
+            aged_ivory_hue=palette.aged_ivory_hue,
+            aged_ivory_influence=palette.aged_ivory_influence,
         )
         report(40)
         engraving_result = apply_engraving(
@@ -210,6 +216,8 @@ class ImagePipeline:
             detail=engraving.detail,
             thickness=max(1, int(round(engraving.thickness * spatial_scale))),
             direction=engraving.direction,
+            aged_ivory_hue=palette.aged_ivory_hue,
+            aged_ivory_influence=palette.aged_ivory_influence,
         )
         report(50)
         consumption_result = apply_black_consumption(
@@ -220,6 +228,8 @@ class ImagePipeline:
             reach=max(1, int(round(consumption.reach * spatial_scale))),
             detail_swallow=consumption.detail_swallow,
             dither_scale=max(1, int(round(dither.scale * spatial_scale))),
+            aged_ivory_hue=palette.aged_ivory_hue,
+            aged_ivory_influence=palette.aged_ivory_influence,
         )
         report(58)
         ink_result = apply_ink(
@@ -231,6 +241,8 @@ class ImagePipeline:
             paper_grain=ink.paper_grain,
             speckles=ink.speckles,
             print_misalignment=ink.print_misalignment,
+            aged_ivory_hue=palette.aged_ivory_hue,
+            aged_ivory_influence=palette.aged_ivory_influence,
         )
         report(68)
         focus_mask = create_focus_mask(
@@ -253,6 +265,8 @@ class ImagePipeline:
             lens_smear=lens.lens_smear,
             smear_angle=lens.smear_angle,
             soft_bleed=lens.soft_bleed,
+            aged_ivory_hue=palette.aged_ivory_hue,
+            aged_ivory_influence=palette.aged_ivory_influence,
         )
         report(86)
         result = apply_degradation(
@@ -266,6 +280,8 @@ class ImagePipeline:
             exposure_drift=degradation.exposure_drift,
             vignette=degradation.vignette,
             image_fade=degradation.image_fade,
+            aged_ivory_hue=palette.aged_ivory_hue,
+            aged_ivory_influence=palette.aged_ivory_influence,
         )
         report(94)
         return result

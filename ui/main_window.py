@@ -4,7 +4,7 @@ from pathlib import Path
 
 from PIL import Image
 from PySide6.QtCore import QSignalBlocker, QThread, QTimer, QUrl, Qt
-from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDropEvent, QKeySequence, QShortcut
+from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDropEvent, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -38,8 +38,12 @@ from core.preset_manager import PresetManager
 from core.edit_history import EditHistory
 from core.preview_render_controller import PreviewRenderController
 from core.image_document import ImageDocument
-from core.processing_settings import is_valid_processing_settings, settings_to_dict
-from core.app_paths import get_settings
+from core.processing_settings import (
+    is_valid_processing_settings,
+    migrate_processing_settings,
+    settings_to_dict,
+)
+from core.app_paths import get_settings, resource_path
 from core.app_info import APP_NAME
 from workers.export_worker import ExportWorker
 from ui.controls import (
@@ -63,6 +67,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(APP_NAME)
+        self.setWindowIcon(QIcon(str(resource_path("assets/ruinprint.ico"))))
         self.resize(1200, 750)
         self.setMinimumSize(800, 500)
         self.setAcceptDrops(True)
@@ -266,6 +271,10 @@ class MainWindow(QMainWindow):
         for slider in self.findChildren(QSlider):
             slider.sliderPressed.connect(lambda: setattr(self, "_slider_before", asdict(self.current_pipeline_settings())))
             slider.sliderReleased.connect(self._commit_slider_edit)
+        self.palette_controls.hue_spectrum.interaction_started.connect(
+            lambda: setattr(self, "_slider_before", asdict(self.current_pipeline_settings()))
+        )
+        self.palette_controls.hue_spectrum.interaction_finished.connect(self._commit_slider_edit)
         self._update_history_buttons()
         self._update_document_actions()
 
@@ -453,8 +462,10 @@ class MainWindow(QMainWindow):
         """Apply the active PNG's embedded snapshot as one undoable editor action."""
         if not (0 <= self.active_document_index < len(self.documents)):
             return
-        settings = self.documents[self.active_document_index].ruinprint_settings
-        if not is_valid_processing_settings(settings):
+        settings = migrate_processing_settings(
+            self.documents[self.active_document_index].ruinprint_settings
+        )
+        if settings is None:
             self._update_recover_image_settings_state(None)
             return
 
@@ -576,7 +587,7 @@ class MainWindow(QMainWindow):
     def _apply_preset_values(self, values: dict) -> None:
         groups = {
             "tone": (self.tone_controls, {"contrast": "contrast_slider", "black_crush": "black_crush_slider", "highlight_burn": "highlight_burn_slider", "gamma": "gamma_slider"}),
-            "palette": (self.palette_controls, {"name": "palette_combo", "tones": "tones_combo"}),
+            "palette": (self.palette_controls, {"name": "palette_combo", "tones": "tones_combo", "aged_ivory_hue": "hue_spectrum", "aged_ivory_influence": "influence_slider"}),
             "dither": (self.dither_controls, {"mode": "mode_combo", "strength": "strength_slider", "scale": "scale_slider"}),
             "dither_destruction": (self.dither_controls, {"pattern_distortion": "pattern_distortion_slider", "dither_loss": "dither_loss_slider", "dither_spread": "dither_spread_slider"}),
             "engraving": (self.engraving_controls, {"strength": "strength_slider", "detail": "detail_slider", "thickness": "thickness_slider", "direction": "direction_combo"}),
@@ -591,13 +602,19 @@ class MainWindow(QMainWindow):
                 if key not in values.get(group_name, {}):
                     continue
                 control, value = getattr(widget, attribute), values[group_name][key]
-                control.setCurrentText(str(value)) if isinstance(control, QComboBox) else control.setValue(int(round(value * 100)) if group_name == "tone" and key == "gamma" else int(value))
+                if isinstance(control, QComboBox):
+                    control.setCurrentText(str(value))
+                elif attribute == "hue_spectrum":
+                    control.set_hue(int(value))
+                else:
+                    control.setValue(int(round(value * 100)) if group_name == "tone" and key == "gamma" else int(value))
         for widget in (
             self.tone_controls, self.dither_controls, self.engraving_controls,
             self.black_consumption_controls, self.ink_controls, self.focus_controls,
             self.lens_controls, self.degradation_controls,
         ):
             widget._refresh_value_labels()
+        self.palette_controls._update_aged_ivory_visibility()
         self.palette_controls._update_swatches()
 
     def export_png(self) -> None:
@@ -684,9 +701,19 @@ class MainWindow(QMainWindow):
 
     def _apply_settings_once(self, settings: dict) -> None:
         self._history_suspended = True
-        self._apply_preset_values(settings)
-        self._history_suspended = False
+        self._applying_preset = True
+        controls = self.findChildren(QSlider) + self.findChildren(QComboBox)
+        for control in controls:
+            control.blockSignals(True)
+        try:
+            self._apply_preset_values(settings)
+        finally:
+            for control in controls:
+                control.blockSignals(False)
+            self._applying_preset = False
+            self._history_suspended = False
         self.preset_combo.setCurrentText("Personalizado")
+        self._update_timer.stop()
         self.update_result_preview(); self._update_history_buttons()
 
     def show_before(self) -> None:
@@ -706,7 +733,11 @@ class MainWindow(QMainWindow):
             if data.get("app") != "RuinPrint" or data.get("type") != "processing-settings" or data.get("version") != 1 or not is_valid_processing_settings(data.get("settings")): raise ValueError
         except (ValueError, json.JSONDecodeError):
             QMessageBox.warning(self, "Colar config.", "As configurações copiadas não são válidas para o RuinPrint."); return
-        before = asdict(self.current_pipeline_settings()); self._apply_settings_once(data["settings"]); self._record_history(before)
+        settings = migrate_processing_settings(data["settings"])
+        if settings is None:
+            QMessageBox.warning(self, "Colar config.", "As configurações copiadas não são válidas para o RuinPrint.")
+            return
+        before = asdict(self.current_pipeline_settings()); self._apply_settings_once(settings); self._record_history(before)
 
     def reset_tone_controls(self) -> None:
         """Restore default controls while keeping the image and update once."""

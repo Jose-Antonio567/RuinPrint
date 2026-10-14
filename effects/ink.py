@@ -17,6 +17,8 @@ def apply_ink(
     paper_grain: int = 0,
     speckles: int = 0,
     print_misalignment: int = 0,
+    aged_ivory_hue: int = 0,
+    aged_ivory_influence: int = 0,
 ) -> Image.Image:
     """Return a new RGBA image with deterministic print/ink imperfections."""
     parameters = (ink_bleed, ink_loss, paper_grain, speckles, print_misalignment)
@@ -30,7 +32,7 @@ def apply_ink(
     alpha = pixels[..., 3]
     active_pixels = alpha > 0.0
 
-    ink_color, paper_color = _ink_and_paper_colors(palette_name, tones)
+    ink_color, paper_color = _ink_and_paper_colors(palette_name, tones, aged_ivory_hue, aged_ivory_influence)
     ink_amount = _ink_amount(rgb, ink_color, paper_color)
 
     if ink_bleed > 0:
@@ -57,9 +59,9 @@ def apply_ink(
 
 
 def _ink_and_paper_colors(
-    palette_name: str, tones: int
+    palette_name: str, tones: int, hue: int = 0, influence: int = 0
 ) -> tuple[np.ndarray, np.ndarray]:
-    colors = get_palette(palette_name, tones)
+    colors = get_palette(palette_name, tones, hue, influence)
     color_array = np.asarray(colors, dtype=np.float32) / 255.0
     luminances = palette_luminance(colors)
     return color_array[np.argmin(luminances)], color_array[np.argmax(luminances)]
