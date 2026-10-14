@@ -7,6 +7,7 @@ AppId={{CB4E12B0-14D6-4C77-9ED4-13C48B6BA33C}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher=RuinPrint
+SetupIconFile=..\assets\ruinprint.ico
 DefaultDirName={userpf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 UninstallDisplayName={#MyAppName}

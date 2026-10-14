@@ -11,7 +11,10 @@ icon_path = project_root / "assets" / "ruinprint.ico"
 
 analysis = Analysis(
     [str(project_root / "app.py")], pathex=[str(project_root)], binaries=[],
-    datas=[(str(project_root / "presets" / "factory_presets.json"), "presets")],
+    datas=[
+        (str(project_root / "presets" / "factory_presets.json"), "presets"),
+        (str(icon_path), "assets"),
+    ],
     hiddenimports=[], hookspath=[], hooksconfig={}, runtime_hooks=[], excludes=[], noarchive=False,
 )
 pyz = PYZ(analysis.pure)

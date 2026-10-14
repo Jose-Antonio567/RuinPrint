@@ -1,17 +1,31 @@
 .venv/
 __pycache__/
 *.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
 .vscode/
+.idea/
 
 build/
 dist/
 *.spec
 !packaging/RuinPrint.spec
 release/
+*.log
+*.dmp
+*.crash
+tmp/
 
 # Portable, per-user runtime data.
 data/
 
+# Generated source image kept at the project root; distributable branding lives in assets/.
+/ChatGPT Image*.png
+
 .DS_Store
 Thumbs.db
+Desktop.ini
